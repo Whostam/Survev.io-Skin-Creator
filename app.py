@@ -1,153 +1,159 @@
 import io
 import json
-import math
 import re
 import zipfile
-from dataclasses import dataclass, asdict
-from typing import Dict, Tuple
+from dataclasses import dataclass
+from typing import Tuple
 
 import streamlit as st
 
-# ==============================
-# Small utilities
-# ==============================
-
-def hex_to_rgb(hex_str: str) -> Tuple[int, int, int]:
-    """#RRGGBB -> (r,g,b)"""
-    h = hex_str.strip().lstrip("#")
-    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
-
-def rgb_to_hex_literal(rgb: Tuple[int, int, int]) -> str:
-    """(r,g,b) -> 0xRRGGBB (TypeScript numeric hex literal)"""
-    return f"0x{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
+# ---------------------------
+# Helpers
+# ---------------------------
 
 def sanitize(name: str) -> str:
-    """make a safe id fragment"""
-    out = re.sub(r"[^A-Za-z0-9]+", "", name.strip())
-    return out or "Custom"
+    return re.sub(r"[^A-Za-z0-9]+", "", name.strip()) or "Custom"
 
-# basic SVG helpers
+def hex_to_rgb(hex_str: str) -> Tuple[int, int, int]:
+    h = hex_str.strip().lstrip("#")
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+def rgb_to_ts_hex(rgb: Tuple[int, int, int]) -> str:
+    return f"0x{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
+
 def svg_header(w=512, h=512):
     return f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
 
 def svg_footer():
     return "</svg>"
 
-def mk_linear_gradient(id_, c1, c2):
+def outline(stroke="#000000", width=8):
+    return f'stroke="{stroke}" stroke-width="{width}"'
+
+# ---------------------------
+# Fill / pattern generators
+# ---------------------------
+
+def def_linear_grad(id_, c1, c2, angle_deg=45):
+    # rotate the gradient by angle_deg using gradientTransform
     return (
-        f'<defs>'
-        f'<linearGradient id="{id_}" x1="0%" y1="0%" x2="100%" y2="100%">'
-        f'<stop offset="0%" stop-color="{c1}"/><stop offset="100%" stop-color="{c2}"/>'
-        f'</linearGradient>'
-        f'</defs>'
+        f'<defs><linearGradient id="{id_}" gradientUnits="userSpaceOnUse" '
+        f'x1="0" y1="0" x2="512" y2="0" gradientTransform="rotate({angle_deg} 256 256)">'
+        f'<stop offset="0%" stop-color="{c1}"/><stop offset="100%" stop-color="{c2}"/></linearGradient></defs>'
     )
 
-def mk_diagonal_stripes(id_, base_color="#ffffff", stripe_color="#999999", opacity=0.5, gap=16):
-    # pattern sized to 32px to tile nicely
+def def_radial_grad(id_, c1, c2):
     return (
-        f'<defs>'
-        f'<pattern id="{id_}" patternUnits="userSpaceOnUse" width="{gap*2}" height="{gap*2}" patternTransform="rotate(45)">'
-        f'<rect width="100%" height="100%" fill="{base_color}"/>'
-        f'<rect x="0" y="0" width="{gap}" height="100%" fill="{stripe_color}" opacity="{opacity}"/>'
-        f'</pattern>'
-        f'</defs>'
+        f'<defs><radialGradient id="{id_}" cx="50%" cy="45%" r="60%">'
+        f'<stop offset="0%" stop-color="{c1}"/><stop offset="100%" stop-color="{c2}"/></radialGradient></defs>'
     )
 
-def outline():
-    return 'stroke="#000000" stroke-width="8"'
+def def_stripes(id_, base, stripe, gap=16, angle=45, opacity=0.6):
+    return (
+        f'<defs><pattern id="{id_}" patternUnits="userSpaceOnUse" width="{gap*2}" height="{gap*2}" '
+        f'patternTransform="rotate({angle})">'
+        f'<rect width="100%" height="100%" fill="{base}"/>'
+        f'<rect x="0" y="0" width="{gap}" height="100%" fill="{stripe}" opacity="{opacity}"/></pattern></defs>'
+    )
 
-# ==============================
-# Sprite generators
-# ==============================
+def def_crosshatch(id_, base, stripe, gap=16, opacity=0.6):
+    return (
+        f'<defs><pattern id="{id_}" patternUnits="userSpaceOnUse" width="{gap}" height="{gap}">'
+        f'<rect width="100%" height="100%" fill="{base}"/>'
+        f'<path d="M0,0 L{gap},0 M0,0 L0,{gap}" stroke="{stripe}" stroke-width="{gap/2}" opacity="{opacity}"/></pattern></defs>'
+    )
 
-def body_svg(primary="#a66cff", secondary="#58a5ff", pattern="none",
-             pattern_color="#a7ff3f", pattern_opacity=0.6, diag_width=24):
-    W, H = 512, 512
+def def_dots(id_, base, dot="#000", size=6, gap=22, opacity=0.6):
+    return (
+        f'<defs><pattern id="{id_}" patternUnits="userSpaceOnUse" width="{gap}" height="{gap}">'
+        f'<rect width="100%" height="100%" fill="{base}"/>'
+        f'<circle cx="{gap/2}" cy="{gap/2}" r="{size}" fill="{dot}" opacity="{opacity}"/>'
+        f'</pattern></defs>'
+    )
+
+def def_checker(id_, c1, c2, size=16):
+    return (
+        f'<defs><pattern id="{id_}" patternUnits="userSpaceOnUse" width="{2*size}" height="{2*size}">'
+        f'<rect width="{2*size}" height="{2*size}" fill="{c1}"/>'
+        f'<rect x="{size}" width="{size}" height="{size}" y="0" fill="{c2}"/>'
+        f'<rect x="0" y="{size}" width="{size}" height="{size}" fill="{c2}"/>'
+        f'</pattern></defs>'
+    )
+
+# One function to produce (defs, fill_url) for a given style
+def build_fill(style: str, base: str, c2: str, extra_color: str, angle: int, gap: int, opacity: float, size: int):
+    """Returns (defs, fill_attr)"""
+    if style == "Solid":
+        return ("", base)
+    if style == "Linear Gradient":
+        defs = def_linear_grad("lg", base, c2, angle)
+        return (defs, 'url(#lg)')
+    if style == "Radial Gradient":
+        defs = def_radial_grad("rg", base, c2)
+        return (defs, 'url(#rg)')
+    if style == "Diagonal Stripes":
+        defs = def_stripes("ds", base, extra_color, gap, angle, opacity)
+        return (defs, 'url(#ds)')
+    if style == "Horizontal Stripes":
+        defs = def_stripes("hs", base, extra_color, gap, 0, opacity)
+        return (defs, 'url(#hs)')
+    if style == "Vertical Stripes":
+        defs = def_stripes("vs", base, extra_color, gap, 90, opacity)
+        return (defs, 'url(#vs)')
+    if style == "Crosshatch":
+        defs = def_crosshatch("ch", base, extra_color, gap, opacity)
+        return (defs, 'url(#ch)')
+    if style == "Dots":
+        defs = def_dots("pd", base, extra_color, size, gap, opacity)
+        return (defs, 'url(#pd)')
+    if style == "Checker":
+        defs = def_checker("ck", base, c2, size)
+        return (defs, 'url(#ck)')
+    return ("", base)
+
+# ---------------------------
+# Part SVGs (no odd extras)
+# ---------------------------
+
+def svg_backpack(fill_defs: str, fill_ref: str, stroke_col="#000", stroke_w=8):
+    W = H = 512
     parts = [svg_header(W, H)]
-    fill = primary
-    defs = ""
-
-    if pattern == "linear":
-        defs = mk_linear_gradient("g1", primary, secondary)
-        fill = 'url(#g1)'
-    elif pattern == "diagonal":
-        defs = mk_diagonal_stripes("p1", base_color=primary, stripe_color=pattern_color,
-                                   opacity=pattern_opacity, gap=max(8, int(diag_width)))
-        fill = 'url(#p1)'
-
-    parts.append(defs)
-    # base circle body
-    parts.append(f'<circle cx="256" cy="288" r="170" fill="{fill}" {outline()}/>')
-    # simple head band (so backpack shows clearly when layered)
-    parts.append(f'<path d="M110,210 Q256,120 402,210 L402,240 Q256,180 110,240 Z" fill="{secondary}" {outline()}/>')
+    parts.append(fill_defs)
+    # Dome backpack
+    parts.append(f'<path d="M128,184 A128,128 0 0 1 384,184 L384,210 A256,120 0 0 0 128,210 Z" fill="{fill_ref}" {outline(stroke_col, stroke_w)}/>')
     parts.append(svg_footer())
     return "\n".join(parts)
 
-def hands_svg(primary="#ffcc88", secondary="#ff9966", pattern="linear"):
-    W, H = 512, 512
+def svg_body(fill_defs: str, fill_ref: str, stroke_col="#000", stroke_w=8):
+    W = H = 512
     parts = [svg_header(W, H)]
-    defs = ""
-    fill = primary
-    if pattern == "linear":
-        defs = mk_linear_gradient("h1", primary, secondary)
-        fill = 'url(#h1)'
-
-    parts.append(defs)
-    # two hands as side circles
-    parts.append(f'<circle cx="160" cy="420" r="48" fill="{fill}" {outline()}/>')
-    parts.append(f'<circle cx="352" cy="420" r="48" fill="{fill}" {outline()}/>')
+    parts.append(fill_defs)
+    # Simple body circle – no extra band
+    parts.append(f'<circle cx="256" cy="288" r="170" fill="{fill_ref}" {outline(stroke_col, stroke_w)}/>')
     parts.append(svg_footer())
     return "\n".join(parts)
 
-def feet_svg(primary="#58a5ff", secondary="#3f7bdc", pattern="linear"):
-    W, H = 512, 512
+def svg_hands(fill_defs: str, fill_ref: str, stroke_col="#000", stroke_w=8):
+    W = H = 512
     parts = [svg_header(W, H)]
-    defs = ""
-    fill = primary
-    if pattern == "linear":
-        defs = mk_linear_gradient("f1", primary, secondary)
-        fill = 'url(#f1)'
-
-    parts.append(defs)
-    # two feet as rounded capsules
-    parts.append(f'<rect x="124" y="430" rx="40" ry="40" width="110" height="58" fill="{fill}" {outline()}/>')
-    parts.append(f'<rect x="278" y="430" rx="40" ry="40" width="110" height="58" fill="{fill}" {outline()}/>')
+    parts.append(fill_defs)
+    parts.append(f'<circle cx="160" cy="420" r="48" fill="{fill_ref}" {outline(stroke_col, stroke_w)}/>')
+    parts.append(f'<circle cx="352" cy="420" r="48" fill="{fill_ref}" {outline(stroke_col, stroke_w)}/>')
     parts.append(svg_footer())
     return "\n".join(parts)
 
-def backpack_svg(primary="#97e27d", secondary="#6cd46b", pattern="diagonal",
-                 pattern_color="#ade86a", pattern_opacity=0.6, diag_width=22):
-    W, H = 512, 512
+def svg_loot(tint_hex: str, stroke_col="#000", stroke_w=8):
+    W = H = 256
     parts = [svg_header(W, H)]
-    defs = ""
-    fill = primary
-    if pattern == "linear":
-        defs = mk_linear_gradient("b1", primary, secondary)
-        fill = 'url(#b1)'
-    elif pattern == "diagonal":
-        defs = mk_diagonal_stripes("b2", base_color=primary, stripe_color=pattern_color,
-                                   opacity=pattern_opacity, gap=max(8, int(diag_width)))
-        fill = 'url(#b2)'
-
-    parts.append(defs)
-    # backpack dome + strap
-    parts.append(f'<path d="M128,184 A128,128 0 0 1 384,184 L384,210 A256,120 0 0 0 128,210 Z" fill="{fill}" {outline()}/>')
+    parts.append(f'<path d="M40,70 L90,50 L120,80 L136,80 L166,50 L216,70 L190,110 L190,200 L66,200 L66,110 Z" fill="{tint_hex}" {outline(stroke_col, stroke_w)}/>')
     parts.append(svg_footer())
     return "\n".join(parts)
 
-def loot_shirt_svg(tint="#a66cff"):
-    W, H = 256, 256
-    parts = [svg_header(W, H)]
-    # cute tee icon
-    parts.append(f'<path d="M40,70 L90,50 L120,80 L136,80 L166,50 L216,70 L190,110 L190,200 L66,200 L66,110 Z" fill="{tint}" {outline()}/>')
-    parts.append(svg_footer())
-    return "\n".join(parts)
+# ---------------------------
+# Export model
+# ---------------------------
 
-# ==============================
-# Data model for export
-# ==============================
-
-RARITY_MAP = {
+RARITY = {
     "Common (1)": 1,
     "Uncommon (2)": 2,
     "Rare (3)": 3,
@@ -156,213 +162,260 @@ RARITY_MAP = {
 }
 
 @dataclass
-class OutfitTS:
-    name: str
-    baseTint: str
-    handTint: str
-    footTint: str
-    backpackTint: str
-    baseSprite: str
-    handSprite: str
-    footSprite: str
-    backpackSprite: str
-    lootSprite: str
-    lootTint: str
-    nodrop_on_death: bool
-    rarity: int
+class ExportOpts:
+    skin_name: str
     lore: str
-    no_drop: bool
-    obstacle_type: str
-    base_scale: float
+    rarity: int
+    noDropOnDeath: bool
+    noDrop: bool
     ghillie: bool
+    obstacleType: str
+    baseScale: float
+    lootBorderOn: bool
+    lootBorderName: str
+    lootBorderTint: str
+    lootScale: float
+    soundPickup: str
+    ref_ext: str  # ".img" or ".svg"
+    stroke_col: str
+    stroke_w: int
 
-    def to_typescript(self, outfit_id: str) -> str:
-        # Build a defineOutfitSkin(...) block mirroring the game's format
-        return f"""// Auto-generated by Survev.io Skin Creator
-// Place sprite files under your game's /img paths or update paths below.
+    def ts_block(self, ident: str, filenames, tints) -> str:
+        # filenames: dict with base/hand/foot/backpack/loot/border
+        # tints: dict with base/hand/foot/backpack/loot
+        lines = []
+        lines.append(f'export const {ident} = defineOutfitSkin("outfitBase", {{')
+        lines.append(f'  name: {json.dumps(self.skin_name)},')
+        if self.noDropOnDeath:
+            lines.append(f'  noDropOnDeath: true,')
+        if self.noDrop:
+            lines.append(f'  noDrop: true,')
+        if self.rarity:
+            lines.append(f'  rarity: {self.rarity},')
+        if self.lore:
+            lines.append(f'  lore: {json.dumps(self.lore)},')
+        if self.ghillie:
+            lines.append(f'  ghillie: true,')
+        if self.obstacleType:
+            lines.append(f'  obstacleType: {json.dumps(self.obstacleType)},')
+        if abs(self.baseScale - 1.0) > 1e-6:
+            lines.append(f'  baseScale: {self.baseScale},')
 
-export const {outfit_id} = defineOutfitSkin("outfitBase", {{
-  name: "{self.name}",
-  noDropOnDeath: {str(self.nodrop_on_death).lower()},
-  rarity: {self.rarity},
-  lore: {json.dumps(self.lore)},
-  skinImg: {{
-    baseTint: {self.baseTint},
-    baseSprite: "{self.baseSprite}",
-    handTint: {self.handTint},
-    handSprite: "{self.handSprite}",
-    footTint: {self.footTint},
-    footSprite: "{self.footSprite}",
-    backpackTint: {self.backpackTint},
-    backpackSprite: "{self.backpackSprite}",
-  }},
-  lootImg: {{
-    sprite: "{self.lootSprite}",
-    tint: {self.lootTint},
-  }},
-  {"baseType: \"outfit\"," if True else ""}
-  {"noDrop: true," if self.no_drop else ""}
-  {"obstacleType: " + json.dumps(self.obstacle_type) + "," if self.obstacle_type else ""}
-  {"baseScale: " + str(self.base_scale) + "," if self.base_scale not in (1.0, 0.0) else ""}
-  {"ghillie: true," if self.ghillie else ""}
-}});"""
+        lines.append('  skinImg: {')
+        lines.append(f'    baseTint: {tints["base"]},')
+        lines.append(f'    baseSprite: "{filenames["base"]}",')
+        lines.append(f'    handTint: {tints["hand"]},')
+        lines.append(f'    handSprite: "{filenames["hands"]}",')
+        lines.append(f'    footTint: {tints["foot"]},')
+        lines.append(f'    footSprite: "{filenames["feet"]}",')
+        lines.append(f'    backpackTint: {tints["backpack"]},')
+        lines.append(f'    backpackSprite: "{filenames["backpack"]}",')
+        lines.append('  },')
 
-# ==============================
-# UI
-# ==============================
+        lines.append('  lootImg: {')
+        lines.append(f'    sprite: "{filenames["loot"]}",')
+        lines.append(f'    tint: {tints["loot"]},')
+        if self.lootBorderOn and filenames.get("border"):
+            lines.append(f'    border: "{filenames["border"]}",')
+            lines.append(f'    borderTint: {tints["border"]},')
+            lines.append(f'    scale: {self.lootScale},')
+        lines.append('  },')
+
+        if self.soundPickup:
+            lines.append('  sound: {')
+            lines.append(f'    pickup: {json.dumps(self.soundPickup)},')
+            lines.append('  },')
+
+        lines.append('});')
+        return "\n".join(lines)
+
+# ---------------------------
+# UI – All controls on the left
+# ---------------------------
 
 st.set_page_config(page_title="Survev.io Skin Creator", page_icon="🎨", layout="wide")
+
+st.sidebar.title("Meta")
+skin_name = st.sidebar.text_input("Skin name", "DJ Hyperfresh")
+lore = st.sidebar.text_area("Lore / description", "Ya gonna marry the pink short squid already?")
+rarity_label = st.sidebar.selectbox("Rarity", list(RARITY.keys()), index=2)
+noDropOnDeath = st.sidebar.checkbox("noDropOnDeath (keep on death)", value=True)
+noDrop = st.sidebar.checkbox("noDrop (never drops)", value=False)
+ghillie = st.sidebar.checkbox("ghillie (match ghillie color in mode)", value=False)
+obstacleType = st.sidebar.text_input("obstacleType (costume skins)", "")
+baseScale = st.sidebar.number_input("baseScale", value=1.0, format="%.2f")
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Sprite Outline")
+stroke_col = st.sidebar.color_picker("Outline color", "#000000")
+stroke_w = st.sidebar.slider("Outline width", 4, 16, 8)
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Asset Reference")
+ref_ext = st.sidebar.selectbox("Reference extension used in TS", [".img", ".svg"], index=0)
+st.sidebar.caption("ZIP always contains SVG files; choose how your TS should reference them in-game.")
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Loot Icon (Optional extras)")
+loot_border_on = st.sidebar.checkbox("Include loot border + scale fields", value=False)
+loot_border_name = st.sidebar.text_input("Border sprite name", "loot-circle-outer-01")
+loot_border_tint = st.sidebar.color_picker("Border tint", "#000000")
+loot_scale = st.sidebar.slider("Loot scale", 0.05, 0.5, 0.20)
+
+# Part controls (Body / Hands / Backpack). Feet = Hands automatically.
+def part_controls(title, defaults):
+    st.sidebar.markdown("---")
+    st.sidebar.subheader(title)
+    primary = st.sidebar.color_picker(f"{title} primary", defaults["primary"])
+    secondary = st.sidebar.color_picker(f"{title} secondary", defaults["secondary"])
+    style = st.sidebar.selectbox(f"{title} fill", ["Solid","Linear Gradient","Radial Gradient","Diagonal Stripes","Horizontal Stripes","Vertical Stripes","Crosshatch","Dots","Checker"], index=1 if title=="Body" else 0, key=f"{title}-style")
+    extra = st.sidebar.color_picker(f"{title} pattern/extra color", defaults["extra"])
+    angle = st.sidebar.slider(f"{title} angle (gradients/stripes)", 0, 180, defaults["angle"])
+    gap = st.sidebar.slider(f"{title} gap/spacing", 6, 48, defaults["gap"])
+    opacity = st.sidebar.slider(f"{title} pattern opacity", 0.0, 1.0, defaults["opacity"])
+    size = st.sidebar.slider(f"{title} dot/check size", 4, 40, defaults["size"])
+    tint = st.sidebar.color_picker(f"{title} tint (OutfitDef)", defaults["tint"])
+    return dict(primary=primary, secondary=secondary, style=style, extra=extra, angle=angle, gap=gap, opacity=opacity, size=size, tint=tint)
+
+body_cfg = part_controls("Body", dict(primary="#a66cff", secondary="#58a5ff", extra="#a7ff3f", angle=45, gap=24, opacity=0.6, size=14, tint="#a66cff"))
+hand_cfg = part_controls("Hands", dict(primary="#ffcc88", secondary="#ff9966", extra="#cc8855", angle=45, gap=20, opacity=0.6, size=10, tint="#ffcc88"))
+bp_cfg   = part_controls("Backpack", dict(primary="#97e27d", secondary="#6cd46b", extra="#ade86a", angle=45, gap=22, opacity=0.6, size=12, tint="#97e27d"))
+
+loot_tint = st.sidebar.color_picker("Loot tint (OutfitDef)", "#a66cff")
+
+# ---------------------------
+# Build fills & sprites
+# ---------------------------
+
+def part_svg_from_cfg(make_svg):
+    defs, fill_ref = build_fill(
+        style=cfg["style"],
+        base=cfg["primary"],
+        c2=cfg["secondary"],
+        extra_color=cfg["extra"],
+        angle=cfg["angle"],
+        gap=cfg["gap"],
+        opacity=cfg["opacity"],
+        size=cfg["size"],
+    )
+    return make_svg(defs, fill_ref, stroke_col, stroke_w)
+
+cfg = body_cfg
+body_svg_text = part_svg_from_cfg(svg_body)
+cfg = hand_cfg
+hands_svg_text = part_svg_from_cfg(svg_hands)
+cfg = bp_cfg
+backpack_svg_text = part_svg_from_cfg(svg_backpack)
+loot_svg_text = svg_loot(loot_tint, stroke_col, stroke_w)
+
+# Feet = hands (no separate UI), tints copy hands tint
+feet_svg_text = hands_svg_text  # sprite duplication
+
+# ---------------------------
+# Combined preview
+# ---------------------------
+
 st.title("Survev.io Skin Creator")
+st.caption("Left: all settings. Right: combined preview. Download gives separate sprites + TypeScript snippet.")
+col_prev = st.container()
 
-with st.sidebar:
-    st.header("Meta")
-    skin_name = st.text_input("Skin name", value="DJ Hyperfresh")
-    lore = st.text_area("Lore / Description", value="Ya gonna marry the pink short squid already?")
-    rarity_label = st.selectbox("Rarity", list(RARITY_MAP.keys()), index=2)
-    no_drop_on_death = st.checkbox("noDropOnDeath (keep on death)", value=True)
-    no_drop_flag = st.checkbox("noDrop (never drops)", value=False)
-    ghillie = st.checkbox("ghillie (match ghillie color in mode)", value=False)
-    obstacle_type = st.text_input("obstacleType (for event skins)", value="")
-    base_scale = st.number_input("baseScale (advanced, leave 1.0)", value=1.0, format="%.2f")
-
-st.subheader("Backpack")
-bp_col1, bp_col2, bp_col3 = st.columns(3)
-with bp_col1:
-    bp_primary = st.color_picker("Backpack primary", "#97e27d")
-with bp_col2:
-    bp_secondary = st.color_picker("Backpack secondary", "#6cd46b")
-with bp_col3:
-    bp_pattern = st.selectbox("Backpack fill type", ["diagonal", "linear", "none"], index=0)
-bp_diag_color = st.color_picker("Backpack diag color", "#ade86a")
-bp_diag_width = st.slider("Backpack diag width", 8, 48, 22)
-bp_opacity = st.slider("Pattern opacity", 0.0, 1.0, 0.6)
-
-st.subheader("Body")
-b_col1, b_col2, b_col3 = st.columns(3)
-with b_col1:
-    body_primary = st.color_picker("Body primary", "#a66cff")
-with b_col2:
-    body_secondary = st.color_picker("Body secondary", "#58a5ff")
-with b_col3:
-    body_pattern = st.selectbox("Body fill type", ["none", "linear", "diagonal"], index=2)
-body_diag_color = st.color_picker("Body diag color", "#a7ff3f")
-body_diag_width = st.slider("Body diag width", 8, 48, 26)
-body_opacity = st.slider("Body pattern opacity", 0.0, 1.0, 0.68)
-
-st.subheader("Hands")
-h_col1, h_col2 = st.columns(2)
-with h_col1:
-    hands_primary = st.color_picker("Hands primary", "#ffcc88")
-with h_col2:
-    hands_secondary = st.color_picker("Hands secondary", "#ff9966")
-
-st.subheader("Feet")
-f_col1, f_col2 = st.columns(2)
-with f_col1:
-    feet_primary = st.color_picker("Feet primary", "#58a5ff")
-with f_col2:
-    feet_secondary = st.color_picker("Feet secondary", "#3f7bdc")
-
-st.subheader("Loot Icon")
-loot_tint = st.color_picker("Loot shirt tint", "#a66cff")
-
-# Previews (stacked to resemble in-game layering: backpack -> body -> hands/feet)
-st.header("Preview")
-prev_col = st.columns(3)
-
-bp_svg = backpack_svg(bp_primary, bp_secondary, bp_pattern, bp_diag_color, bp_opacity, bp_diag_width)
-body_svg_str = body_svg(body_primary, body_secondary, body_pattern, body_diag_color, body_opacity, body_diag_width)
-hands_svg_str = hands_svg(hands_primary, hands_secondary)
-feet_svg_str = feet_svg(feet_primary, feet_secondary)
-loot_svg_str = loot_shirt_svg(loot_tint)
-
-def show_svg(svg_str, title):
-    st.markdown(f"**{title}**", help=title)
-    st.markdown(f"<div>{svg_str}</div>", unsafe_allow_html=True)
-
-with prev_col[0]:
-    show_svg(bp_svg, "Backpack")
-with prev_col[1]:
-    show_svg(body_svg_str, "Body")
-with prev_col[2]:
-    show_svg(hands_svg_str, "Hands")
-    show_svg(feet_svg_str, "Feet")
+# Composite preview simply draws the shapes again with positions
+W = H = 640
+preview = [svg_header(W, H)]
+# Backpack (behind)
+preview.append(backpack_svg_text.replace('width="512"', 'width="512"').replace('height="512"', 'height="512"').replace('viewBox="0 0 512 512"', 'viewBox="0 0 512 512"'))
+# Body
+preview.append(body_svg_text)
+# Hands on top (we show the left/right ones near bottom)
+preview.append(hands_svg_text)
+preview.append(svg_footer())
+col_prev.markdown(f'<div style="width:100%;max-width:820px;">{ "".join(preview) }</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
-# ==============================
-# Export section
-# ==============================
-st.header("Export")
+# ---------------------------
+# Export (ZIP + TS)
+# ---------------------------
 
-colA, colB = st.columns(2)
-with colA:
-    outfit_id = sanitize(skin_name)  # TS variable id
-    base_rgb = hex_to_rgb(body_primary)
-    hand_rgb = hex_to_rgb(hands_primary)
-    foot_rgb = hex_to_rgb(feet_primary)
-    backpack_rgb = hex_to_rgb(bp_primary)
-    loot_rgb = hex_to_rgb(loot_tint)
+ident = f'outfit{sanitize(skin_name)}'
+base_id = sanitize(skin_name).lower()
 
-    # default in-zip paths that mirror game
-    baseSpritePath = f"img/player/player-base-{outfit_id.lower()}.svg"
-    handSpritePath = f"img/player/player-hands-{outfit_id.lower()}.svg"
-    footSpritePath = f"img/player/player-feet-{outfit_id.lower()}.svg"
-    backpackSpritePath = f"img/player/player-circle-base-{outfit_id.lower()}.svg"
-    lootSpritePath = f"img/loot/loot-shirt-outfit{outfit_id}.svg"
+ext_ref = "img" if ref_ext == ".img" else "svg"
 
-    outf = OutfitTS(
-        name=skin_name,
-        baseTint=rgb_to_hex_literal(base_rgb),
-        handTint=rgb_to_hex_literal(hand_rgb),
-        footTint=rgb_to_hex_literal(foot_rgb),
-        backpackTint=rgb_to_hex_literal(backpack_rgb),
-        baseSprite=baseSpritePath,
-        handSprite=handSpritePath,
-        footSprite=footSpritePath,
-        backpackSprite=backpackSpritePath,
-        lootSprite=lootSpritePath,
-        lootTint=rgb_to_hex_literal(loot_rgb),
-        nodrop_on_death=no_drop_on_death,
-        rarity=RARITY_MAP[rarity_label],
-        lore=lore,
-        no_drop=no_drop_flag,
-        obstacle_type=obstacle_type.strip(),
-        base_scale=float(base_scale),
-        ghillie=ghillie,
+filenames = {
+    "base": f"player-base-{base_id}.{ext_ref}",
+    "hands": f"player-hands-{base_id}.{ext_ref}",
+    "feet": f"player-feet-{base_id}.{ext_ref}",           # still exported; same art as hands
+    "backpack": f"player-circle-base-{base_id}.{ext_ref}",
+    "loot": f"loot-shirt-outfit{base_id}.{ext_ref}",
+    "border": f"{loot_border_name}.{ext_ref}" if loot_border_on and loot_border_name else "",
+}
+
+tints = {
+    "base": rgb_to_ts_hex(hex_to_rgb(body_cfg["tint"])),
+    "hand": rgb_to_ts_hex(hex_to_rgb(hand_cfg["tint"])),
+    "foot": rgb_to_ts_hex(hex_to_rgb(hand_cfg["tint"])),   # foot = hand
+    "backpack": rgb_to_ts_hex(hex_to_rgb(bp_cfg["tint"])),
+    "loot": rgb_to_ts_hex(hex_to_rgb(loot_tint)),
+    "border": rgb_to_ts_hex(hex_to_rgb(loot_border_tint)),
+}
+
+opts = ExportOpts(
+    skin_name=skin_name,
+    lore=lore,
+    rarity=RARITY[rarity_label],
+    noDropOnDeath=noDropOnDeath,
+    noDrop=noDrop,
+    ghillie=ghillie,
+    obstacleType=obstacleType.strip(),
+    baseScale=float(baseScale),
+    lootBorderOn=loot_border_on,
+    lootBorderName=loot_border_name,
+    lootBorderTint=loot_border_tint,
+    lootScale=float(loot_scale),
+    soundPickup="clothes_pickup_01",
+    ref_ext=ref_ext,
+    stroke_col=stroke_col,
+    stroke_w=stroke_w,
+)
+
+ts_code = opts.ts_block(
+    ident=ident,
+    filenames=filenames,
+    tints=tints,
+)
+
+left, right = st.columns(2)
+with left:
+    st.subheader("TypeScript export")
+    st.code(ts_code, language="typescript")
+with right:
+    st.subheader("What’s inside the ZIP")
+    st.markdown(
+        f"""
+- `{filenames["base"]}` (body)
+- `{filenames["hands"]}` (hands)
+- `{filenames["feet"]}` (feet, auto = hands)
+- `{filenames["backpack"]}` (backpack)
+- `{filenames["loot"]}` (loot icon)
+- `export/{ident}.ts` (ready `defineOutfitSkin(...)`)
+        """.strip()
     )
 
-    ts_code = outf.to_typescript(outfit_id=f"outfit{outfit_id}")
-
-    st.code(ts_code, language="typescript")
-
-with colB:
-    st.markdown("**What you’ll get in the ZIP**")
-    st.markdown("""
-- `img/player/player-base-<name>.svg` (body)
-- `img/player/player-hands-<name>.svg` (hands)
-- `img/player/player-feet-<name>.svg` (feet)
-- `img/player/player-circle-base-<name>.svg` (backpack)
-- `img/loot/loot-shirt-outfit<name>.svg` (loot icon)
-- `export/outfit_<name>.ts` (ready `defineOutfitSkin(...)` block)
-    """.strip())
-
-# Create ZIP
+# Create a zip with SVG files + TS snippet
 buf = io.BytesIO()
 with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-    zf.writestr(baseSpritePath, body_svg_str)
-    zf.writestr(handSpritePath, hands_svg_str)
-    zf.writestr(footSpritePath, feet_svg_str)
-    zf.writestr(backpackSpritePath, bp_svg)
-    zf.writestr(lootSpritePath, loot_svg_str)
-    zf.writestr(f"export/outfit_{outfit_id}.ts", ts_code)
+    zf.writestr(filenames["base"].replace(".img", ".svg"), body_svg_text)
+    zf.writestr(filenames["hands"].replace(".img", ".svg"), hands_svg_text)
+    zf.writestr(filenames["feet"].replace(".img", ".svg"), feet_svg_text)
+    zf.writestr(filenames["backpack"].replace(".img", ".svg"), backpack_svg_text)
+    zf.writestr(filenames["loot"].replace(".img", ".svg"), loot_svg_text)
+    zf.writestr(f"export/{ident}.ts", ts_code)
 zip_bytes = buf.getvalue()
 
 st.download_button(
     "⬇️ Download sprites + TypeScript config (ZIP)",
     data=zip_bytes,
-    file_name=f"{outfit_id}_survev_skin.zip",
+    file_name=f"{base_id}_survev_skin.zip",
     mime="application/zip",
 )
-
-st.caption("Tip: move the generated `img/...` files into your game's asset folder and paste the exported TypeScript into your skins file.")
