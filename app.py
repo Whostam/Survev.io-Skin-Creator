@@ -252,7 +252,7 @@ baseScale = st.sidebar.number_input("baseScale", value=1.0, format="%.2f")
 st.sidebar.markdown("---")
 st.sidebar.subheader("Sprite Outline")
 stroke_col = st.sidebar.color_picker("Outline color", "#000000")
-stroke_w = st.sidebar.slider("Outline width", 4, 16, 8)
+stroke_w = st.sidebar.slider("Outline width", 0, 4, 16, 8)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Asset Reference")
