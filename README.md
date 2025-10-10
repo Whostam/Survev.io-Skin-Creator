@@ -1,15 +1,13 @@
 # Survev.io Skin Creator (Streamlit)
 
-**Built for your OutfitDef.** Controls on the left, a single combined preview on the right, and exports that drop into your `outfitDefs.ts`:
+A tiny one-file Streamlit app to design Survev.io outfits and export:
+- `player-circle-base-<Skin>.svg` (backpack)
+- `player-base-<Skin>.svg` (body)
+- `player-hands-<Skin>.svg` (hands)
+- `loot/loot-shirt-<Skin>.svg` (loot icon)
+- a ready-to-paste **TypeScript snippet** for `OutfitDef`
 
-- Exports separate sprites for **body**, **hands**, **feet** (auto = hands, no UI), and **backpack**.
-- Exports a ready `defineOutfitSkin("outfitBase", { ... })` block with:
-  - `skinImg` tints + sprite names,
-  - `lootImg.sprite/tint` (and optional `border`, `borderTint`, `scale`),
-  - optional `noDropOnDeath`, `noDrop`, `rarity`, `lore`, `ghillie`, `obstacleType`, `baseScale`,
-  - `sound: { pickup: "clothes_pickup_01" }`.
-
-## Run
+## Run locally
 
 ```bash
 pip install -r requirements.txt
