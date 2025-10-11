@@ -1,0 +1,155 @@
+"""Utilities for TypeScript export generation."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from typing import Dict, Mapping, Optional
+
+from .helpers import apply_prefix, ensure_extension
+
+RARITY_OPTIONS = [
+    ("(omit)", None),
+    ("1 - Common", "1"),
+    ("2 - Uncommon", "2"),
+    ("3 - Rare", "3"),
+    ("4 - Epic", "4"),
+    ("5 - Mythic", "5"),
+]
+
+SPRITE_MODE_CUSTOM = "Exported art (custom filenames)"
+SPRITE_MODE_BASE = "Reuse base game sprites"
+
+
+@dataclass
+class ExportOpts:
+    skin_name: str
+    lore: str
+    rarity: Optional[str]
+    noDropOnDeath: bool
+    noDrop: bool
+    ghillie: bool
+    obstacleType: str
+    baseScale: float
+    lootBorderOn: bool
+    lootBorderName: str
+    lootBorderTint: str
+    lootScale: float
+    soundPickup: str
+    ref_ext: str
+
+    def ts_block(self, ident: str, filenames: Mapping[str, str], tints: Mapping[str, str]) -> str:
+        lines = []
+        lines.append(f'export const {ident} = defineOutfitSkin("outfitBase", {{')
+        lines.append(f'  name: {json.dumps(self.skin_name)},')
+        if self.noDropOnDeath:
+            lines.append('  noDropOnDeath: true,')
+        if self.noDrop:
+            lines.append('  noDrop: true,')
+        if self.rarity:
+            lines.append(f'  rarity: {self.rarity},')
+        if self.lore:
+            lines.append(f'  lore: {json.dumps(self.lore)},')
+        if self.ghillie:
+            lines.append('  ghillie: true,')
+        if self.obstacleType:
+            lines.append(f'  obstacleType: {json.dumps(self.obstacleType)},')
+        if abs(self.baseScale - 1.0) > 1e-6:
+            lines.append(f'  baseScale: {self.baseScale},')
+
+        lines.append('  skinImg: {')
+        lines.append(f'    baseTint: {tints["base"]},')
+        lines.append(f'    baseSprite: "{filenames["base"]}",')
+        lines.append(f'    handTint: {tints["hand"]},')
+        lines.append(f'    handSprite: "{filenames["hands"]}",')
+        lines.append(f'    footTint: {tints["foot"]},')
+        lines.append(f'    footSprite: "{filenames["feet"]}",')
+        lines.append(f'    backpackTint: {tints["backpack"]},')
+        lines.append(f'    backpackSprite: "{filenames["backpack"]}",')
+        lines.append('  },')
+
+        lines.append('  lootImg: {')
+        lines.append(f'    sprite: "{filenames["loot"]}",')
+        lines.append(f'    tint: {tints["loot"]},')
+        if self.lootBorderOn and filenames.get("border"):
+            lines.append(f'    border: "{filenames["border"]}",')
+            lines.append(f'    borderTint: {tints["border"]},')
+            lines.append(f'    scale: {self.lootScale},')
+        lines.append('  },')
+
+        if self.soundPickup:
+            lines.append('  sound: {')
+            lines.append(f'    pickup: {json.dumps(self.soundPickup)},')
+            lines.append('  },')
+
+        lines.append('});')
+        return "\n".join(lines)
+
+
+def final_name(
+    key: str,
+    custom_stub: str,
+    sprite_mode: str,
+    existing_sprite_ids: Mapping[str, str],
+    custom_dirs: Mapping[str, str],
+    ext_ref: str,
+) -> str:
+    """Resolve the final sprite filename based on the configured strategy."""
+    stub_with_ext = ensure_extension(custom_stub, ext_ref)
+    if sprite_mode == SPRITE_MODE_BASE:
+        existing = existing_sprite_ids.get(key, "")
+        if existing:
+            return ensure_extension(existing, ext_ref)
+        return stub_with_ext
+    if sprite_mode == SPRITE_MODE_CUSTOM:
+        if key in {"base", "hands", "feet", "backpack"}:
+            return apply_prefix(custom_dirs.get("player", ""), stub_with_ext)
+        if key in {"loot", "border", "inner"}:
+            return apply_prefix(custom_dirs.get("loot", ""), stub_with_ext)
+    return stub_with_ext
+
+
+def build_filenames(
+    base_id: str,
+    sprite_mode: str,
+    existing_sprite_ids: Mapping[str, str],
+    custom_dirs: Mapping[str, str],
+    ext_ref: str,
+    loot_border_on: bool,
+    loot_border_name: str,
+    loot_inner_name: str,
+) -> Dict[str, str]:
+    filenames = {
+        "base": final_name("base", f"player-base-{base_id}", sprite_mode, existing_sprite_ids, custom_dirs, ext_ref),
+        "hands": final_name("hands", f"player-hands-{base_id}", sprite_mode, existing_sprite_ids, custom_dirs, ext_ref),
+        "feet": final_name("feet", f"player-feet-{base_id}", sprite_mode, existing_sprite_ids, custom_dirs, ext_ref),
+        "backpack": final_name("backpack", f"player-circle-base-{base_id}", sprite_mode, existing_sprite_ids, custom_dirs, ext_ref),
+        "loot": final_name("loot", f"loot-shirt-outfit{base_id}", sprite_mode, existing_sprite_ids, custom_dirs, ext_ref),
+        "border": "",
+        "inner": "",
+    }
+    if loot_border_on and loot_border_name:
+        filenames["border"] = final_name("border", loot_border_name, sprite_mode, existing_sprite_ids, custom_dirs, ext_ref)
+    if loot_border_on and loot_inner_name:
+        filenames["inner"] = final_name("inner", loot_inner_name, sprite_mode, existing_sprite_ids, custom_dirs, ext_ref)
+    return filenames
+
+
+def adjust_tints_for_sprite_mode(tints: Mapping[str, str], sprite_mode: str) -> Dict[str, str]:
+    if sprite_mode != SPRITE_MODE_CUSTOM:
+        return dict(tints)
+    adjusted = {}
+    for key, value in tints.items():
+        adjusted[key] = "0xffffff" if value else value
+    return adjusted
+
+
+__all__ = [
+    "ExportOpts",
+    "RARITY_OPTIONS",
+    "SPRITE_MODE_BASE",
+    "SPRITE_MODE_CUSTOM",
+    "adjust_tints_for_sprite_mode",
+    "build_filenames",
+    "final_name",
+]
