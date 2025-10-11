@@ -225,6 +225,37 @@ def svg_loot_shirt_base(tint_hex: str):
     parts.append(svg_footer())
     return "\n".join(parts)
 
+
+def svg_loot_circle_inner(base_hex: str):
+    highlight = lighten(base_hex, 0.25)
+    fade = darken(base_hex, 0.65)
+    parts = [svg_header(148, 148)]
+    parts.append(
+        "<defs>"
+        "<radialGradient id=\"lootInner\" cx=\"50%\" cy=\"50%\" r=\"50%\" gradientUnits=\"userSpaceOnUse\">"
+        f"<stop offset=\"0%\" stop-color=\"{highlight}\" stop-opacity=\"1\"/>"
+        f"<stop offset=\"100%\" stop-color=\"{fade}\" stop-opacity=\"0\"/>"
+        "</radialGradient>"
+        "</defs>"
+    )
+    parts.append(
+        '<ellipse cx="74" cy="74" rx="68.861" ry="68.769" fill="url(#lootInner)" />'
+    )
+    parts.append(svg_footer())
+    return "\n".join(parts)
+
+
+def svg_loot_circle_outer(stroke_hex: str):
+    fill_col = lighten(stroke_hex, 0.6)
+    parts = [svg_header(146, 146)]
+    parts.append(
+        f'<ellipse cx="73" cy="73" rx="68.861" ry="68.769" fill="{fill_col}" '
+        'fill-opacity="0.27" '
+        f'stroke="{stroke_hex}" stroke-width="6.21" stroke-opacity="0.77" />'
+    )
+    parts.append(svg_footer())
+    return "\n".join(parts)
+
 # ---------------------------
 # Export model
 # ---------------------------
@@ -333,10 +364,13 @@ ref_ext = st.sidebar.selectbox("Reference extension used in TS", [".img", ".svg"
 st.sidebar.caption("ZIP always contains SVG files; choose how your TS should reference them in-game.")
 
 st.sidebar.markdown("---")
+
 st.sidebar.subheader("Loot Icon (defaults to BaseDefs)")
 loot_border_on = st.sidebar.checkbox("Include loot border + scale fields", value=True)
-loot_border_name = st.sidebar.text_input("Border sprite name", "loot-circle-outer-01")
-loot_border_tint = st.sidebar.color_picker("Border tint", "#000000")
+loot_border_name = st.sidebar.text_input("Outer circle sprite name", "loot-circle-outer-01")
+loot_inner_name = st.sidebar.text_input("Inner circle sprite name", "loot-circle-inner-01")
+loot_border_tint = st.sidebar.color_picker("Outer circle stroke tint", "#000000")
+loot_inner_glow = st.sidebar.color_picker("Inner circle glow color", "#fcfcfc")
 loot_scale = st.sidebar.slider("Loot scale", 0.05, 0.5, 0.20)
 
 def part_controls(title, defaults):
@@ -362,7 +396,7 @@ body_cfg = part_controls("Body",     dict(primary="#f8c574", secondary="#f8c574"
 hand_cfg = part_controls("Hands",    dict(primary="#f8c574", secondary="#f8c574", extra="#cba86a", angle=45, gap=20, opacity=0.6, size=10, tint="#f8c574"))
 bp_cfg   = part_controls("Backpack", dict(primary="#816537", secondary="#816537", extra="#6e5630", angle=45, gap=22, opacity=0.6, size=12, tint="#816537"))
 
-loot_tint = st.sidebar.color_picker("Loot tint (OutfitDef)", "#ffffff")
+loot_icon_tint = st.sidebar.color_picker("Loot shirt tint", "#ffffff")
 
 # ---------------------------
 # Build fills & sprites
@@ -386,7 +420,9 @@ body_svg_text = build_part_svg(body_cfg, svg_body)
 hands_svg_text = build_part_svg(hand_cfg, svg_hands)
 backpack_svg_text = build_part_svg(bp_cfg, svg_backpack)
 feet_svg_text = build_part_svg(hand_cfg, svg_feet)
-loot_svg_text = svg_loot_shirt_base(loot_tint)  # << matches outfitBase asset
+loot_svg_text = svg_loot_shirt_base(loot_icon_tint)  # << matches outfitBase asset
+loot_inner_svg_text = svg_loot_circle_inner(loot_inner_glow)
+loot_outer_svg_text = svg_loot_circle_outer(loot_border_tint)
 preview_overlay_svg_text = svg_body_preview_overlay(stroke_col, stroke_w)
 
 # ---------------------------
@@ -403,20 +439,22 @@ hands_uri = svg_data_uri(hands_svg_text)
 feet_uri = svg_data_uri(feet_svg_text)
 backpack_uri = svg_data_uri(backpack_svg_text)
 loot_uri = svg_data_uri(loot_svg_text)
+loot_inner_uri = svg_data_uri(loot_inner_svg_text)
+loot_outer_uri = svg_data_uri(loot_outer_svg_text)
 overlay_uri = svg_data_uri(preview_overlay_svg_text)
 
-stage_width, stage_height = 240, 280
+stage_width, stage_height = 320, 360
 body_w = body_h = 140
 backpack_w = backpack_h = 148
-hand_w = hand_h = 52
+hand_w = hand_h = 44
 
 body_left = (stage_width - body_w) // 2
-body_top = 72
+body_top = 120
 backpack_left = (stage_width - backpack_w) // 2
-backpack_top = 60
-hand_left = body_left - 20
+backpack_top = 92
+hand_left = body_left - 44
 hand_right = stage_width - hand_left - hand_w
-hand_top = body_top + body_h - 16
+hand_top = body_top + body_h - 40
 
 combined_preview = f"""
 <style>
@@ -430,6 +468,27 @@ combined_preview = f"""
   .preview-stage img {{
     position: absolute;
     image-rendering: optimizeQuality;
+  }}
+  .loot-stage {{
+    position: relative;
+    width: 148px;
+    height: 148px;
+  }}
+  .loot-stage img {{
+    position: absolute;
+    image-rendering: optimizeQuality;
+    top: 0;
+    left: 0;
+  }}
+  .loot-outer, .loot-inner {{
+    width: 148px;
+    height: 148px;
+  }}
+  .loot-shirt {{
+    width: 128px;
+    height: 128px;
+    top: 10px;
+    left: 10px;
   }}
   .preview-backpack {{
     left: {backpack_left}px;
@@ -492,7 +551,11 @@ combined_preview = f"""
       </figure>
     </div>
     <figure style="margin:0;text-align:center;">
-      <img src="{loot_uri}" width="128" height="128" alt="Loot icon" style="image-rendering:optimizeQuality;" />
+      <div class="loot-stage">
+        <img class="loot-outer" src="{loot_outer_uri}" alt="Loot outer" />
+        <img class="loot-inner" src="{loot_inner_uri}" alt="Loot inner" />
+        <img class="loot-shirt" src="{loot_uri}" alt="Loot shirt" />
+      </div>
       <figcaption style="font-size:0.8rem;color:#666;margin-top:4px;">Loot icon</figcaption>
     </figure>
   </div>
@@ -518,6 +581,7 @@ filenames = {
     "backpack": f"player-circle-base-{base_id}.{ext_ref}",
     "loot": f"loot-shirt-outfit{base_id}.{ext_ref}",
     "border": f"{loot_border_name}.{ext_ref}" if loot_border_on and loot_border_name else "",
+    "inner": f"{loot_inner_name}.{ext_ref}" if loot_border_on and loot_inner_name else "",
 }
 
 tints = {
@@ -525,7 +589,7 @@ tints = {
     "hand": rgb_to_ts_hex(hex_to_rgb(hand_cfg["tint"])),
     "foot": rgb_to_ts_hex(hex_to_rgb(hand_cfg["tint"])),
     "backpack": rgb_to_ts_hex(hex_to_rgb(bp_cfg["tint"])),
-    "loot": rgb_to_ts_hex(hex_to_rgb(loot_tint)),
+    "loot": rgb_to_ts_hex(hex_to_rgb(loot_icon_tint)),
     "border": rgb_to_ts_hex(hex_to_rgb(loot_border_tint)),
 }
 
@@ -566,6 +630,8 @@ with right:
     ]
     if loot_border_on and filenames.get("border"):
         zip_lines.append(f"- `{filenames['border']}` (loot border)")
+    if loot_border_on and filenames.get("inner"):
+        zip_lines.append(f"- `{filenames['inner']}` (loot inner glow)")
     zip_lines.extend(
         [
             f"- `{filenames['loot']}` (loot icon – shirt silhouette, no stroke)",
@@ -581,6 +647,10 @@ with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
     zf.writestr(filenames["feet"].replace(".img", ".svg"), feet_svg_text)
     zf.writestr(filenames["backpack"].replace(".img", ".svg"), backpack_svg_text)
     zf.writestr(filenames["loot"].replace(".img", ".svg"), loot_svg_text)
+    if loot_border_on and filenames.get("border"):
+        zf.writestr(filenames["border"].replace(".img", ".svg"), loot_outer_svg_text)
+    if loot_border_on and filenames.get("inner"):
+        zf.writestr(filenames["inner"].replace(".img", ".svg"), loot_inner_svg_text)
     zf.writestr(f"export/{ident}.ts", ts_code)
 zip_bytes = buf.getvalue()
 
