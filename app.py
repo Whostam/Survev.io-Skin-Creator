@@ -193,15 +193,17 @@ def svg_feet(fill_defs: str, fill_ref: str, cfg, stroke_col="#000", stroke_w=8):
 def svg_body_preview_overlay(stroke_col: str, stroke_w: int) -> str:
     W = H = 140
     parts = [svg_header(W, H)]
-    # Outer armor ring
+    # Outer armor ring to mimic the in-game decorative outline
     parts.append(
         f'<circle cx="70" cy="70" r="{66 + stroke_w / 2}" fill="none" '
         f'stroke="{stroke_col}" stroke-width="{stroke_w}" />'
     )
-    # Simple helmet block similar to the in-game preview accent.
+    # Circular helmet accent (preview only)
+    helmet_radius = 34
+    helmet_cy = 44
     parts.append(
-        '<path d="M22 54a48 48 0 0 1 96 0v22H22z" fill="#3c7fda" stroke="#174173" stroke-width="6" '
-        'stroke-linejoin="round"/>'
+        f'<circle cx="70" cy="{helmet_cy}" r="{helmet_radius}" fill="#3c7fda" '
+        f'stroke="#174173" stroke-width="{stroke_w}" />'
     )
     parts.append(svg_footer())
     return "\n".join(parts)
@@ -403,14 +405,72 @@ backpack_uri = svg_data_uri(backpack_svg_text)
 loot_uri = svg_data_uri(loot_svg_text)
 overlay_uri = svg_data_uri(preview_overlay_svg_text)
 
+stage_width, stage_height = 240, 280
+body_w = body_h = 140
+backpack_w = backpack_h = 148
+hand_w = hand_h = 52
+
+body_left = (stage_width - body_w) // 2
+body_top = 72
+backpack_left = (stage_width - backpack_w) // 2
+backpack_top = 60
+hand_left = body_left - 20
+hand_right = stage_width - hand_left - hand_w
+hand_top = body_top + body_h - 16
+
 combined_preview = f"""
+<style>
+  .preview-stage {{
+    position: relative;
+    width: {stage_width}px;
+    height: {stage_height}px;
+    flex: 0 0 auto;
+    background: transparent;
+  }}
+  .preview-stage img {{
+    position: absolute;
+    image-rendering: optimizeQuality;
+  }}
+  .preview-backpack {{
+    left: {backpack_left}px;
+    top: {backpack_top}px;
+    width: {backpack_w}px;
+    height: {backpack_h}px;
+  }}
+  .preview-body {{
+    left: {body_left}px;
+    top: {body_top}px;
+    width: {body_w}px;
+    height: {body_h}px;
+  }}
+  .preview-overlay {{
+    left: {body_left}px;
+    top: {body_top}px;
+    width: {body_w}px;
+    height: {body_h}px;
+  }}
+  .preview-hand-left {{
+    left: {hand_left}px;
+    top: {hand_top}px;
+    width: {hand_w}px;
+    height: {hand_h}px;
+  }}
+  .preview-hand-right {{
+    left: {hand_right}px;
+    top: {hand_top}px;
+    width: {hand_w}px;
+    height: {hand_h}px;
+    transform: scaleX(-1);
+    transform-origin: center;
+  }}
+</style>
 <div style="display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start;justify-content:center;">
-  <div style="position:relative;width:220px;height:200px;flex:0 0 auto;background:linear-gradient(135deg,#21435a,#3b7a8f);border-radius:16px;padding:12px;box-shadow:0 4px 18px rgba(0,0,0,0.3);">
-    <img src="{backpack_uri}" style="position:absolute;left:36px;top:10px;width:148px;height:148px;image-rendering:optimizeQuality;" alt="Backpack" />
-    <img src="{body_uri}" style="position:absolute;left:42px;top:18px;width:140px;height:140px;image-rendering:optimizeQuality;" alt="Body" />
-    <img src="{overlay_uri}" style="position:absolute;left:42px;top:18px;width:140px;height:140px;image-rendering:optimizeQuality;" alt="Body overlay" />
-    <img src="{hands_uri}" style="position:absolute;left:12px;top:120px;width:76px;height:76px;image-rendering:optimizeQuality;" alt="Left hand" />
-    <img src="{hands_uri}" style="position:absolute;left:132px;top:120px;width:76px;height:76px;transform:scaleX(-1);image-rendering:optimizeQuality;" alt="Right hand" />
+  <div class="preview-stage">
+    <img class="preview-backpack" src="{backpack_uri}" alt="Backpack" />
+    <img class="preview-body" src="{body_uri}" alt="Body" />
+    <img class="preview-overlay" src="{overlay_uri}" alt="Body overlay" />
+    <img class="preview-hand-left" src="{hands_uri}" alt="Left hand" />
+    <img class="preview-hand-right" src="{hands_uri}" alt="Right hand" />
   </div>
   <div style="display:flex;flex-direction:column;gap:12px;flex:0 0 auto;align-items:center;">
     <div style="display:grid;grid-template-columns:repeat(2,auto);gap:16px;justify-items:center;">
