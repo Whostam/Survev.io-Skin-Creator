@@ -217,16 +217,16 @@ def svg_body_preview_overlay() -> str:
     # Outer armor ring to mimic the in-game decorative outline
     center = W / 2
     ring_stroke = "#20160a"
-    ring_width = 18
+    ring_width = 12
     parts.append(
         f'<circle cx="{center}" cy="{center}" r="{70}" fill="none" '
         f'stroke="{ring_stroke}" stroke-width="{ring_width}" />'
     )
     # Circular helmet accent (preview only)
-    helmet_radius = 34
-    helmet_cy = center - 26
+    helmet_radius = 40
+    helmet_cy = center - 22
     helmet_stroke = "#174173"
-    helmet_width = 12
+    helmet_width = 8
     parts.append(
         f'<circle cx="{center}" cy="{helmet_cy}" r="{helmet_radius}" fill="#3c7fda" '
         f'stroke="{helmet_stroke}" stroke-width="{helmet_width}" />'
@@ -490,19 +490,19 @@ loot_inner_uri = svg_data_uri(loot_inner_svg_text)
 loot_outer_uri = svg_data_uri(loot_outer_svg_text)
 overlay_uri = svg_data_uri(preview_overlay_svg_text)
 
-stage_width, stage_height = 420, 460
-body_w = body_h = 140
+stage_width, stage_height = 420, 480
+body_w = body_h = 134
 backpack_w = backpack_h = 148
-hand_w = hand_h = 44
+hand_w = hand_h = 52
 overlay_w = overlay_h = 160
 
 body_left = (stage_width - body_w) // 2
-body_top = 160
+body_top = 190
 backpack_left = (stage_width - backpack_w) // 2
-backpack_top = 122
-hand_left = body_left - 44
+backpack_top = 110
+hand_left = body_left - 32
 hand_right = stage_width - hand_left - hand_w
-hand_top = body_top + body_h - 40
+hand_top = body_top + body_h - 34
 overlay_left = body_left - (overlay_w - body_w) // 2
 overlay_top = body_top - (overlay_h - body_h) // 2
 
