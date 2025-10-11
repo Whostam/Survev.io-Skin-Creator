@@ -3,9 +3,10 @@ import json
 import re
 import zipfile
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Tuple
 
 import streamlit as st
+import urllib.parse
 
 # ---------------------------
 # Helpers
@@ -22,13 +23,41 @@ def rgb_to_ts_hex(rgb: Tuple[int, int, int]) -> str:
     return f"0x{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
 
 def svg_header(w=512, h=512):
-    return f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" '
+        f'viewBox="0 0 {w} {h}" shape-rendering="geometricPrecision" '
+        f'text-rendering="geometricPrecision">'
+    )
 
 def svg_footer():
     return "</svg>"
 
 def outline(stroke="#000000", width=8):
     return f'stroke="{stroke}" stroke-width="{width}"'
+
+
+def clamp_byte(value: float) -> int:
+    return max(0, min(255, int(round(value))))
+
+
+def lighten(hex_str: str, amount: float) -> str:
+    r, g, b = hex_to_rgb(hex_str)
+    r = clamp_byte(r + (255 - r) * amount)
+    g = clamp_byte(g + (255 - g) * amount)
+    b = clamp_byte(b + (255 - b) * amount)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def darken(hex_str: str, amount: float) -> str:
+    r, g, b = hex_to_rgb(hex_str)
+    r = clamp_byte(r * (1 - amount))
+    g = clamp_byte(g * (1 - amount))
+    b = clamp_byte(b * (1 - amount))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def svg_data_uri(svg_text: str) -> str:
+    return "data:image/svg+xml;utf8," + urllib.parse.quote(svg_text)
 
 # ---------------------------
 # Fill / pattern generators
@@ -112,28 +141,70 @@ def build_fill(style: str, base: str, c2: str, extra_color: str, angle: int, gap
 # Clean part SVGs
 # ---------------------------
 
-def svg_backpack(fill_defs: str, fill_ref: str, stroke_col="#000", stroke_w=8):
-    W = H = 512
+def svg_backpack(fill_defs: str, fill_ref: str, cfg, stroke_col="#000", stroke_w=8):
+    W = H = 148
     parts = [svg_header(W, H)]
-    parts.append(fill_defs)
-    parts.append(f'<path d="M128,184 A128,128 0 0 1 384,184 L384,210 A256,120 0 0 0 128,210 Z" fill="{fill_ref}" {outline(stroke_col, stroke_w)}/>')
+    if fill_defs:
+        parts.append(fill_defs)
+    parts.append(
+        f'<ellipse cx="74" cy="74" rx="66.5" ry="66.5" fill="{fill_ref}" '
+        f'{outline(stroke_col, stroke_w)} />'
+    )
     parts.append(svg_footer())
     return "\n".join(parts)
 
-def svg_body(fill_defs: str, fill_ref: str, stroke_col="#000", stroke_w=8):
-    W = H = 512
+
+def svg_body(fill_defs: str, fill_ref: str, cfg, stroke_col="#000", stroke_w=8):
+    W = H = 140
     parts = [svg_header(W, H)]
-    parts.append(fill_defs)
-    parts.append(f'<circle cx="256" cy="288" r="170" fill="{fill_ref}" {outline(stroke_col, stroke_w)}/>')
+    if fill_defs:
+        parts.append(fill_defs)
+    parts.append(f'<ellipse cx="70" cy="70" rx="66" ry="66" fill="{fill_ref}" />')
     parts.append(svg_footer())
     return "\n".join(parts)
 
-def svg_hands(fill_defs: str, fill_ref: str, stroke_col="#000", stroke_w=8):
-    W = H = 512
+
+def svg_hands(fill_defs: str, fill_ref: str, cfg, stroke_col="#000", stroke_w=8):
+    W = H = 76
     parts = [svg_header(W, H)]
-    parts.append(fill_defs)
-    parts.append(f'<circle cx="160" cy="420" r="48" fill="{fill_ref}" {outline(stroke_col, stroke_w)}/>')
-    parts.append(f'<circle cx="352" cy="420" r="48" fill="{fill_ref}" {outline(stroke_col, stroke_w)}/>')
+    if fill_defs:
+        parts.append(fill_defs)
+    parts.append(
+        f'<ellipse cx="38" cy="38" rx="30.4" ry="30.4" fill="{fill_ref}" '
+        f'{outline(stroke_col, stroke_w)} />'
+    )
+    parts.append(svg_footer())
+    return "\n".join(parts)
+
+
+def svg_feet(fill_defs: str, fill_ref: str, cfg, stroke_col="#000", stroke_w=8):
+    W = H = 38
+    parts = [svg_header(W, H)]
+    if fill_defs:
+        parts.append(fill_defs)
+    parts.append(
+        f'<ellipse cx="19" cy="19" rx="15.7" ry="9.8" fill="{fill_ref}" '
+        f'{outline(stroke_col, stroke_w)} />'
+    )
+    parts.append(svg_footer())
+    return "\n".join(parts)
+
+
+def svg_body_preview_overlay(stroke_col: str, stroke_w: int) -> str:
+    W = H = 140
+    parts = [svg_header(W, H)]
+    # Outer armor ring to mimic the in-game decorative outline
+    parts.append(
+        f'<circle cx="70" cy="70" r="{66 + stroke_w / 2}" fill="none" '
+        f'stroke="{stroke_col}" stroke-width="{stroke_w}" />'
+    )
+    # Circular helmet accent (preview only)
+    helmet_radius = 34
+    helmet_cy = 44
+    parts.append(
+        f'<circle cx="70" cy="{helmet_cy}" r="{helmet_radius}" fill="#3c7fda" '
+        f'stroke="#174173" stroke-width="{stroke_w}" />'
+    )
     parts.append(svg_footer())
     return "\n".join(parts)
 
@@ -158,20 +229,22 @@ def svg_loot_shirt_base(tint_hex: str):
 # Export model
 # ---------------------------
 
-RARITY = {
-    "(omit)": 0,
-    "Common (1)": 1,
-    "Uncommon (2)": 2,
-    "Rare (3)": 3,
-    "Epic (4)": 4,
-    "Legendary (5)": 5,
-}
+RARITY_OPTIONS = [
+    ("(omit)", None),
+    ("Stock", "Rarity.Stock"),
+    ("Common", "Rarity.Common"),
+    ("Uncommon", "Rarity.Uncommon"),
+    ("Rare", "Rarity.Rare"),
+    ("Epic", "Rarity.Epic"),
+    ("Legendary", "Rarity.Legendary"),
+    ("Mythic", "Rarity.Mythic"),
+]
 
 @dataclass
 class ExportOpts:
     skin_name: str
     lore: str
-    rarity: int
+    rarity: Optional[str]
     noDropOnDeath: bool
     noDrop: bool
     ghillie: bool
@@ -242,7 +315,7 @@ st.set_page_config(page_title="Survev.io Skin Creator", page_icon="🎨", layout
 st.sidebar.title("Meta")
 skin_name = st.sidebar.text_input("Skin name", "Basic Outfit")
 lore = st.sidebar.text_area("Lore / description", "")
-rarity_label = st.sidebar.selectbox("Rarity", list(RARITY.keys()), index=0)  # (omit)
+rarity_label = st.sidebar.selectbox("Rarity", [label for label, _ in RARITY_OPTIONS], index=0)
 noDropOnDeath = st.sidebar.checkbox("noDropOnDeath (keep on death)", value=False)
 noDrop = st.sidebar.checkbox("noDrop (never drops)", value=False)
 ghillie = st.sidebar.checkbox("ghillie (match ghillie color in mode)", value=False)
@@ -296,31 +369,137 @@ loot_tint = st.sidebar.color_picker("Loot tint (OutfitDef)", "#ffffff")
 # ---------------------------
 
 def build_part_svg(cfg, make_svg):
-    defs, fill_ref = build_fill(cfg["style"], cfg["primary"], cfg["secondary"], cfg["extra"], cfg["angle"], cfg["gap"], cfg["opacity"], cfg["size"])
-    return make_svg(defs, fill_ref, stroke_col, stroke_w)
+    defs, fill_ref = build_fill(
+        cfg["style"],
+        cfg["primary"],
+        cfg["secondary"],
+        cfg["extra"],
+        cfg["angle"],
+        cfg["gap"],
+        cfg["opacity"],
+        cfg["size"],
+    )
+    return make_svg(defs, fill_ref, cfg, stroke_col, stroke_w)
+
 
 body_svg_text = build_part_svg(body_cfg, svg_body)
 hands_svg_text = build_part_svg(hand_cfg, svg_hands)
 backpack_svg_text = build_part_svg(bp_cfg, svg_backpack)
+feet_svg_text = build_part_svg(hand_cfg, svg_feet)
 loot_svg_text = svg_loot_shirt_base(loot_tint)  # << matches outfitBase asset
-
-# Feet = hands (exported to satisfy engine)
-feet_svg_text = hands_svg_text
+preview_overlay_svg_text = svg_body_preview_overlay(stroke_col, stroke_w)
 
 # ---------------------------
 # Combined preview
 # ---------------------------
 
 st.title("Survev.io Skin Creator")
-st.caption("All settings on the left. Preview shows backpack → body → hands. Download exports separate sprites + TypeScript snippet.")
+st.caption(
+    "All settings on the left. Preview shows a layered mock-up (backpack, body, armor overlay, hands) plus individual sprites."
+)
 
-W = H = 640
-preview = [svg_header(W, H)]
-preview.append(backpack_svg_text)
-preview.append(body_svg_text)
-preview.append(hands_svg_text)
-preview.append(svg_footer())
-st.markdown(f'<div style="width:100%;max-width:820px;">{"".join(preview)}</div>', unsafe_allow_html=True)
+body_uri = svg_data_uri(body_svg_text)
+hands_uri = svg_data_uri(hands_svg_text)
+feet_uri = svg_data_uri(feet_svg_text)
+backpack_uri = svg_data_uri(backpack_svg_text)
+loot_uri = svg_data_uri(loot_svg_text)
+overlay_uri = svg_data_uri(preview_overlay_svg_text)
+
+stage_width, stage_height = 240, 280
+body_w = body_h = 140
+backpack_w = backpack_h = 148
+hand_w = hand_h = 52
+
+body_left = (stage_width - body_w) // 2
+body_top = 72
+backpack_left = (stage_width - backpack_w) // 2
+backpack_top = 60
+hand_left = body_left - 20
+hand_right = stage_width - hand_left - hand_w
+hand_top = body_top + body_h - 16
+
+combined_preview = f"""
+<style>
+  .preview-stage {{
+    position: relative;
+    width: {stage_width}px;
+    height: {stage_height}px;
+    flex: 0 0 auto;
+    background: transparent;
+  }}
+  .preview-stage img {{
+    position: absolute;
+    image-rendering: optimizeQuality;
+  }}
+  .preview-backpack {{
+    left: {backpack_left}px;
+    top: {backpack_top}px;
+    width: {backpack_w}px;
+    height: {backpack_h}px;
+  }}
+  .preview-body {{
+    left: {body_left}px;
+    top: {body_top}px;
+    width: {body_w}px;
+    height: {body_h}px;
+  }}
+  .preview-overlay {{
+    left: {body_left}px;
+    top: {body_top}px;
+    width: {body_w}px;
+    height: {body_h}px;
+  }}
+  .preview-hand-left {{
+    left: {hand_left}px;
+    top: {hand_top}px;
+    width: {hand_w}px;
+    height: {hand_h}px;
+  }}
+  .preview-hand-right {{
+    left: {hand_right}px;
+    top: {hand_top}px;
+    width: {hand_w}px;
+    height: {hand_h}px;
+    transform: scaleX(-1);
+    transform-origin: center;
+  }}
+</style>
+<div style="display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start;justify-content:center;">
+  <div class="preview-stage">
+    <img class="preview-backpack" src="{backpack_uri}" alt="Backpack" />
+    <img class="preview-body" src="{body_uri}" alt="Body" />
+    <img class="preview-overlay" src="{overlay_uri}" alt="Body overlay" />
+    <img class="preview-hand-left" src="{hands_uri}" alt="Left hand" />
+    <img class="preview-hand-right" src="{hands_uri}" alt="Right hand" />
+  </div>
+  <div style="display:flex;flex-direction:column;gap:12px;flex:0 0 auto;align-items:center;">
+    <div style="display:grid;grid-template-columns:repeat(2,auto);gap:16px;justify-items:center;">
+      <figure style="margin:0;text-align:center;">
+        <img src="{body_uri}" width="140" height="140" alt="Body sprite" style="image-rendering:optimizeQuality;" />
+        <figcaption style="font-size:0.8rem;color:#666;margin-top:4px;">Body</figcaption>
+      </figure>
+      <figure style="margin:0;text-align:center;">
+        <img src="{backpack_uri}" width="148" height="148" alt="Backpack sprite" style="image-rendering:optimizeQuality;" />
+        <figcaption style="font-size:0.8rem;color:#666;margin-top:4px;">Backpack</figcaption>
+      </figure>
+      <figure style="margin:0;text-align:center;">
+        <img src="{hands_uri}" width="76" height="76" alt="Hands sprite" style="image-rendering:optimizeQuality;" />
+        <figcaption style="font-size:0.8rem;color:#666;margin-top:4px;">Hands</figcaption>
+      </figure>
+      <figure style="margin:0;text-align:center;">
+        <img src="{feet_uri}" width="38" height="38" alt="Feet sprite" style="image-rendering:optimizeQuality;" />
+        <figcaption style="font-size:0.8rem;color:#666;margin-top:4px;">Feet</figcaption>
+      </figure>
+    </div>
+    <figure style="margin:0;text-align:center;">
+      <img src="{loot_uri}" width="128" height="128" alt="Loot icon" style="image-rendering:optimizeQuality;" />
+      <figcaption style="font-size:0.8rem;color:#666;margin-top:4px;">Loot icon</figcaption>
+    </figure>
+  </div>
+</div>
+"""
+
+st.markdown(combined_preview, unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -335,7 +514,7 @@ ext_ref = "img" if ref_ext == ".img" else "svg"
 filenames = {
     "base": f"player-base-{base_id}.{ext_ref}",
     "hands": f"player-hands-{base_id}.{ext_ref}",
-    "feet": f"player-feet-{base_id}.{ext_ref}",  # hands art reused
+    "feet": f"player-feet-{base_id}.{ext_ref}",
     "backpack": f"player-circle-base-{base_id}.{ext_ref}",
     "loot": f"loot-shirt-outfit{base_id}.{ext_ref}",
     "border": f"{loot_border_name}.{ext_ref}" if loot_border_on and loot_border_name else "",
@@ -350,10 +529,12 @@ tints = {
     "border": rgb_to_ts_hex(hex_to_rgb(loot_border_tint)),
 }
 
+rarity_value = next(value for label, value in RARITY_OPTIONS if label == rarity_label)
+
 opts = ExportOpts(
     skin_name=skin_name,
     lore=lore,
-    rarity=RARITY[rarity_label],
+    rarity=rarity_value,
     noDropOnDeath=noDropOnDeath,
     noDrop=noDrop,
     ghillie=ghillie,
@@ -377,16 +558,21 @@ with left:
     st.code(ts_code, language="typescript")
 with right:
     st.subheader("What’s inside the ZIP")
-    st.markdown(
-        f"""
-- `{filenames["base"]}` (body)
-- `{filenames["hands"]}` (hands)
-- `{filenames["feet"]}` (feet, auto = hands)
-- `{filenames["backpack"]}` (backpack)
-- `{filenames["loot"]}` (loot icon – shirt silhouette, no stroke)
-- `export/{ident}.ts` (ready `defineOutfitSkin(...)`)
-        """.strip()
+    zip_lines = [
+        f"- `{filenames['base']}` (body)",
+        f"- `{filenames['hands']}` (hands)",
+        f"- `{filenames['feet']}` (feet)",
+        f"- `{filenames['backpack']}` (backpack)",
+    ]
+    if loot_border_on and filenames.get("border"):
+        zip_lines.append(f"- `{filenames['border']}` (loot border)")
+    zip_lines.extend(
+        [
+            f"- `{filenames['loot']}` (loot icon – shirt silhouette, no stroke)",
+            f"- `export/{ident}.ts` (ready `defineOutfitSkin(...)`)",
+        ]
     )
+    st.markdown("\n".join(zip_lines))
 
 buf = io.BytesIO()
 with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
