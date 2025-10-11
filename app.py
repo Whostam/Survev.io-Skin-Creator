@@ -1,3 +1,4 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/app.py b/app.py
 index 797fa6a8a6d34cbd1d2e072466e7eba963c129ae..df1561682a3c16aa47f84796d4494413f28b6b4e 100644
 --- a/app.py
@@ -548,4 +549,6 @@ index 797fa6a8a6d34cbd1d2e072466e7eba963c129ae..df1561682a3c16aa47f84796d4494413
      data=zip_bytes,
      file_name=f"{base_id}_survev_skin.zip",
      mime="application/zip",
- )
+ ) 
+EOF
+)
