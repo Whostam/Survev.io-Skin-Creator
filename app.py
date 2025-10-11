@@ -32,7 +32,9 @@ def svg_header(w=512, h=512):
 def svg_footer():
     return "</svg>"
 
-def outline(stroke="#000000", width=8):
+def outline(stroke: Optional[str] = "#000000", width: Optional[float] = 8):
+    if stroke is None or width is None:
+        return ""
     return f'stroke="{stroke}" stroke-width="{width}"'
 
 
@@ -141,7 +143,13 @@ def build_fill(style: str, base: str, c2: str, extra_color: str, angle: int, gap
 # Clean part SVGs
 # ---------------------------
 
-def svg_backpack(fill_defs: str, fill_ref: str, cfg, stroke_col="#000", stroke_w=8):
+def svg_backpack(
+    fill_defs: str,
+    fill_ref: str,
+    cfg,
+    stroke_col="#333333",
+    stroke_w=11.014,
+):
     W = H = 148
     parts = [svg_header(W, H)]
     if fill_defs:
@@ -164,7 +172,13 @@ def svg_body(fill_defs: str, fill_ref: str, cfg, stroke_col="#000", stroke_w=8):
     return "\n".join(parts)
 
 
-def svg_hands(fill_defs: str, fill_ref: str, cfg, stroke_col="#000", stroke_w=8):
+def svg_hands(
+    fill_defs: str,
+    fill_ref: str,
+    cfg,
+    stroke_col="#333333",
+    stroke_w=11.096,
+):
     W = H = 76
     parts = [svg_header(W, H)]
     if fill_defs:
@@ -177,7 +191,13 @@ def svg_hands(fill_defs: str, fill_ref: str, cfg, stroke_col="#000", stroke_w=8)
     return "\n".join(parts)
 
 
-def svg_feet(fill_defs: str, fill_ref: str, cfg, stroke_col="#000", stroke_w=8):
+def svg_feet(
+    fill_defs: str,
+    fill_ref: str,
+    cfg,
+    stroke_col="#333333",
+    stroke_w=4.513,
+):
     W = H = 38
     parts = [svg_header(W, H)]
     if fill_defs:
@@ -190,23 +210,26 @@ def svg_feet(fill_defs: str, fill_ref: str, cfg, stroke_col="#000", stroke_w=8):
     return "\n".join(parts)
 
 
-def svg_body_preview_overlay(stroke_col: str, stroke_w: int) -> str:
-    # Give the preview overlay extra breathing room so wide outline widths
-    # never clip inside the image bounds.
+def svg_body_preview_overlay() -> str:
+    # Preview-only overlay that mimics the in-game body outline and helmet.
     W = H = 160
     parts = [svg_header(W, H)]
     # Outer armor ring to mimic the in-game decorative outline
     center = W / 2
+    ring_stroke = "#20160a"
+    ring_width = 18
     parts.append(
         f'<circle cx="{center}" cy="{center}" r="{70}" fill="none" '
-        f'stroke="{stroke_col}" stroke-width="{stroke_w}" />'
+        f'stroke="{ring_stroke}" stroke-width="{ring_width}" />'
     )
     # Circular helmet accent (preview only)
     helmet_radius = 34
     helmet_cy = center - 26
+    helmet_stroke = "#174173"
+    helmet_width = 12
     parts.append(
         f'<circle cx="{center}" cy="{helmet_cy}" r="{helmet_radius}" fill="#3c7fda" '
-        f'stroke="#174173" stroke-width="{stroke_w}" />'
+        f'stroke="{helmet_stroke}" stroke-width="{helmet_width}" />'
     )
     parts.append(svg_footer())
     return "\n".join(parts)
@@ -290,8 +313,6 @@ class ExportOpts:
     lootScale: float
     soundPickup: str
     ref_ext: str
-    stroke_col: str
-    stroke_w: int
 
     def ts_block(self, ident: str, filenames, tints) -> str:
         lines = []
@@ -357,9 +378,25 @@ obstacleType = st.sidebar.text_input("obstacleType (costume skins)", "")
 baseScale = st.sidebar.number_input("baseScale", value=1.0, format="%.2f")
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("Sprite Outline")
-stroke_col = st.sidebar.color_picker("Outline color", "#000000")
-stroke_w = st.sidebar.slider("Outline width", 4, 16, 8)
+st.sidebar.subheader("Backpack Outline")
+bp_stroke_col = st.sidebar.color_picker("Backpack outline color", "#333333")
+bp_stroke_w = st.sidebar.slider(
+    "Backpack outline width",
+    min_value=6.0,
+    max_value=20.0,
+    value=11.0,
+    step=0.1,
+)
+
+st.sidebar.subheader("Hands Outline")
+hand_stroke_col = st.sidebar.color_picker("Hands outline color", "#333333")
+hand_stroke_w = st.sidebar.slider(
+    "Hands outline width",
+    min_value=6.0,
+    max_value=20.0,
+    value=11.1,
+    step=0.1,
+)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Asset Reference")
@@ -400,12 +437,13 @@ hand_cfg = part_controls("Hands",    dict(primary="#f8c574", secondary="#f8c574"
 bp_cfg   = part_controls("Backpack", dict(primary="#816537", secondary="#816537", extra="#6e5630", angle=45, gap=22, opacity=0.6, size=12, tint="#816537"))
 
 loot_icon_tint = st.sidebar.color_picker("Loot shirt tint", "#ffffff")
+feet_stroke_w = hand_stroke_w * (4.513 / 11.096)
 
 # ---------------------------
 # Build fills & sprites
 # ---------------------------
 
-def build_part_svg(cfg, make_svg):
+def build_part_svg(cfg, make_svg, stroke_col=None, stroke_w=None):
     defs, fill_ref = build_fill(
         cfg["style"],
         cfg["primary"],
@@ -419,14 +457,20 @@ def build_part_svg(cfg, make_svg):
     return make_svg(defs, fill_ref, cfg, stroke_col, stroke_w)
 
 
-body_svg_text = build_part_svg(body_cfg, svg_body)
-hands_svg_text = build_part_svg(hand_cfg, svg_hands)
-backpack_svg_text = build_part_svg(bp_cfg, svg_backpack)
-feet_svg_text = build_part_svg(hand_cfg, svg_feet)
+body_svg_text = build_part_svg(body_cfg, svg_body, None, None)
+hands_svg_text = build_part_svg(
+    hand_cfg, svg_hands, hand_stroke_col, hand_stroke_w
+)
+backpack_svg_text = build_part_svg(
+    bp_cfg, svg_backpack, bp_stroke_col, bp_stroke_w
+)
+feet_svg_text = build_part_svg(
+    hand_cfg, svg_feet, hand_stroke_col, feet_stroke_w
+)
 loot_svg_text = svg_loot_shirt_base(loot_icon_tint)  # << matches outfitBase asset
 loot_inner_svg_text = svg_loot_circle_inner(loot_inner_glow)
 loot_outer_svg_text = svg_loot_circle_outer(loot_border_tint)
-preview_overlay_svg_text = svg_body_preview_overlay(stroke_col, stroke_w)
+preview_overlay_svg_text = svg_body_preview_overlay()
 
 # ---------------------------
 # Combined preview
@@ -623,8 +667,6 @@ opts = ExportOpts(
     lootScale=float(loot_scale),
     soundPickup="clothes_pickup_01",
     ref_ext=ref_ext,
-    stroke_col=stroke_col,
-    stroke_w=stroke_w,
 )
 
 ts_code = opts.ts_block(ident=ident, filenames=filenames, tints=tints)
