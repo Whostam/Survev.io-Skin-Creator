@@ -14,11 +14,20 @@ class PreviewLayout:
     body_size: int = 134
     body_top: int = 190
     body_left_offset: int = 0
+    body_width: Optional[int] = None
+    body_height: Optional[int] = None
+    body_left: Optional[int] = None
     body_rotation: float = 0.0
     hand_size: int = 52
     hand_offset_x: int = 32
     hand_offset_y: int = 34
     hand_top: Optional[int] = None
+    hand_left: Optional[int] = None
+    hand_right: Optional[int] = None
+    hand_width: Optional[int] = None
+    hand_height: Optional[int] = None
+    hand_left_top: Optional[int] = None
+    hand_right_top: Optional[int] = None
     hand_rotation_left: float = 0.0
     hand_rotation_right: float = 0.0
     right_hand_mirror: bool = True
@@ -26,17 +35,30 @@ class PreviewLayout:
     backpack_size: int = 148
     backpack_top: int = 110
     backpack_offset_x: int = 0
+    backpack_width: Optional[int] = None
+    backpack_height: Optional[int] = None
+    backpack_left: Optional[int] = None
     show_backpack: bool = True
     overlay_size: int = 160
     overlay_offset_x: int = 0
     overlay_offset_y: int = 0
     overlay_above_body: bool = True
+    overlay_width: Optional[int] = None
+    overlay_height: Optional[int] = None
+    overlay_left: Optional[int] = None
+    overlay_top: Optional[int] = None
     show_overlay: bool = True
     show_feet: bool = False
     feet_size: int = 38
     feet_offset_x: int = 28
     feet_offset_y: int = 12
     feet_top: Optional[int] = None
+    feet_left: Optional[int] = None
+    feet_right: Optional[int] = None
+    feet_width: Optional[int] = None
+    feet_height: Optional[int] = None
+    feet_left_top: Optional[int] = None
+    feet_right_top: Optional[int] = None
     feet_rotation_left: float = 0.0
     feet_rotation_right: float = 0.0
     right_foot_mirror: bool = True
@@ -57,27 +79,40 @@ PREVIEW_PRESETS: Mapping[str, PreviewPreset] = OrderedDict(
             layout=PreviewLayout(
                 stage_width=360,
                 stage_height=420,
-                body_size=150,
-                body_top=156,
-                hand_size=60,
-                hand_offset_x=70,
-                hand_top=282,
-                backpack_size=192,
-                backpack_top=68,
-                overlay_size=200,
-                overlay_offset_y=-10,
+                body_top=150,
+                body_width=200,
+                body_height=200,
+                body_left=100,
+                hand_width=80,
+                hand_height=80,
+                hand_left=95,
+                hand_right=220,
+                hand_top=290,
+                backpack_width=200,
+                backpack_height=192,
+                backpack_left=100,
+                backpack_top=90,
+                overlay_width=200,
+                overlay_height=200,
+                overlay_left=100,
+                overlay_top=150,
+                overlay_above_body=True,
             ),
             description="Backpack, armor ring, and helmet aligned like the loadout preview.",
         ),
         "Standing": PreviewPreset(
             layout=PreviewLayout(
-                stage_width=300,
-                stage_height=280,
-                body_size=140,
+                stage_width=360,
+                stage_height=360,
                 body_top=92,
-                hand_size=56,
-                hand_offset_x=78,
-                hand_top=206,
+                body_width=200,
+                body_height=200,
+                body_left=80,
+                hand_width=80,
+                hand_height=80,
+                hand_left=60,
+                hand_right=210,
+                hand_top=220,
                 show_backpack=False,
                 show_overlay=False,
             ),
@@ -85,25 +120,34 @@ PREVIEW_PRESETS: Mapping[str, PreviewPreset] = OrderedDict(
         ),
         "Knocked": PreviewPreset(
             layout=PreviewLayout(
-                stage_width=320,
-                stage_height=320,
-                body_size=130,
+                stage_width=360,
+                stage_height=360,
                 body_top=118,
+                body_width=200,
+                body_height=200,
+                body_left=95,
                 body_rotation=-28,
-                hand_size=50,
-                hand_offset_x=34,
-                hand_top=222,
+                hand_width=80,
+                hand_height=80,
+                hand_left=170,
+                hand_right=245,
+                hand_left_top=270,
+                hand_right_top=200,
                 hand_rotation_left=-18,
                 hand_rotation_right=18,
                 hands_above_body=False,
                 show_backpack=False,
                 show_overlay=False,
                 show_feet=True,
-                feet_size=44,
-                feet_offset_x=36,
-                feet_top=244,
-                feet_rotation_left=-22,
-                feet_rotation_right=22,
+                feet_width=100,
+                feet_height=100,
+                feet_left=50,
+                feet_right=110,
+                feet_left_top=170,
+                feet_right_top=90,
+                feet_rotation_left=216,
+                feet_rotation_right=145,
+                right_foot_mirror=False,
                 feet_above_body=False,
             ),
             description="Top-down knocked pose with limbs tucked under the tilted body.",
@@ -113,23 +157,89 @@ PREVIEW_PRESETS: Mapping[str, PreviewPreset] = OrderedDict(
 
 
 def build_preview_html(uris: Dict[str, str], layout: PreviewLayout = PreviewLayout()) -> str:
-    body_left = (layout.stage_width - layout.body_size) // 2 + layout.body_left_offset
-    backpack_left = (layout.stage_width - layout.backpack_size) // 2 + layout.backpack_offset_x
-    hand_left = body_left - layout.hand_offset_x
-    hand_right = layout.stage_width - hand_left - layout.hand_size
-    hand_top = (
+    body_width = layout.body_width if layout.body_width is not None else layout.body_size
+    body_height = layout.body_height if layout.body_height is not None else layout.body_size
+    body_left = (
+        layout.body_left
+        if layout.body_left is not None
+        else (layout.stage_width - body_width) // 2 + layout.body_left_offset
+    )
+
+    backpack_width = (
+        layout.backpack_width if layout.backpack_width is not None else layout.backpack_size
+    )
+    backpack_height = (
+        layout.backpack_height if layout.backpack_height is not None else layout.backpack_size
+    )
+    backpack_left = (
+        layout.backpack_left
+        if layout.backpack_left is not None
+        else (layout.stage_width - backpack_width) // 2 + layout.backpack_offset_x
+    )
+
+    hand_width = layout.hand_width if layout.hand_width is not None else layout.hand_size
+    hand_height = layout.hand_height if layout.hand_height is not None else layout.hand_size
+    hand_left = (
+        layout.hand_left
+        if layout.hand_left is not None
+        else body_left - layout.hand_offset_x
+    )
+    hand_right = (
+        layout.hand_right
+        if layout.hand_right is not None
+        else layout.stage_width - hand_left - hand_width
+    )
+    base_hand_top = (
         layout.hand_top
         if layout.hand_top is not None
-        else layout.body_top + layout.body_size - layout.hand_offset_y
+        else layout.body_top + body_height - layout.hand_offset_y
     )
-    overlay_left = body_left - (layout.overlay_size - layout.body_size) // 2 + layout.overlay_offset_x
-    overlay_top = layout.body_top - (layout.overlay_size - layout.body_size) // 2 + layout.overlay_offset_y
-    feet_left = body_left - layout.feet_offset_x
-    feet_right = layout.stage_width - feet_left - layout.feet_size
-    feet_top = (
+    hand_left_top = (
+        layout.hand_left_top if layout.hand_left_top is not None else base_hand_top
+    )
+    hand_right_top = (
+        layout.hand_right_top if layout.hand_right_top is not None else base_hand_top
+    )
+
+    overlay_width = (
+        layout.overlay_width if layout.overlay_width is not None else layout.overlay_size
+    )
+    overlay_height = (
+        layout.overlay_height if layout.overlay_height is not None else layout.overlay_size
+    )
+    overlay_left = (
+        layout.overlay_left
+        if layout.overlay_left is not None
+        else body_left - (overlay_width - body_width) // 2 + layout.overlay_offset_x
+    )
+    overlay_top = (
+        layout.overlay_top
+        if layout.overlay_top is not None
+        else layout.body_top - (overlay_height - body_height) // 2 + layout.overlay_offset_y
+    )
+
+    feet_width = layout.feet_width if layout.feet_width is not None else layout.feet_size
+    feet_height = layout.feet_height if layout.feet_height is not None else layout.feet_size
+    feet_left = (
+        layout.feet_left
+        if layout.feet_left is not None
+        else body_left - layout.feet_offset_x
+    )
+    feet_right = (
+        layout.feet_right
+        if layout.feet_right is not None
+        else layout.stage_width - feet_left - feet_width
+    )
+    base_feet_top = (
         layout.feet_top
         if layout.feet_top is not None
-        else layout.body_top + layout.body_size - layout.feet_offset_y
+        else layout.body_top + body_height - layout.feet_offset_y
+    )
+    feet_left_top = (
+        layout.feet_left_top if layout.feet_left_top is not None else base_feet_top
+    )
+    feet_right_top = (
+        layout.feet_right_top if layout.feet_right_top is not None else base_feet_top
     )
 
     def _build_transform(parts: Optional[list[Optional[str]]]) -> str:
@@ -235,52 +345,52 @@ def build_preview_html(uris: Dict[str, str], layout: PreviewLayout = PreviewLayo
   .preview-backpack {{
     left: {backpack_left}px;
     top: {layout.backpack_top}px;
-    width: {layout.backpack_size}px;
-    height: {layout.backpack_size}px;
+    width: {backpack_width}px;
+    height: {backpack_height}px;
   }}
   .preview-body {{
     left: {body_left}px;
     top: {layout.body_top}px;
-    width: {layout.body_size}px;
-    height: {layout.body_size}px;
+    width: {body_width}px;
+    height: {body_height}px;
     transform: {body_transform};
     transform-origin: center;
   }}
   .preview-overlay {{
     left: {overlay_left}px;
     top: {overlay_top}px;
-    width: {layout.overlay_size}px;
-    height: {layout.overlay_size}px;
+    width: {overlay_width}px;
+    height: {overlay_height}px;
   }}
   .preview-hand-left {{
     left: {hand_left}px;
-    top: {hand_top}px;
-    width: {layout.hand_size}px;
-    height: {layout.hand_size}px;
+    top: {hand_left_top}px;
+    width: {hand_width}px;
+    height: {hand_height}px;
     transform: {hand_left_transform};
     transform-origin: center;
   }}
   .preview-hand-right {{
     left: {hand_right}px;
-    top: {hand_top}px;
-    width: {layout.hand_size}px;
-    height: {layout.hand_size}px;
+    top: {hand_right_top}px;
+    width: {hand_width}px;
+    height: {hand_height}px;
     transform: {hand_right_transform};
     transform-origin: center;
   }}
   .preview-feet-left {{
     left: {feet_left}px;
-    top: {feet_top}px;
-    width: {layout.feet_size}px;
-    height: {layout.feet_size}px;
+    top: {feet_left_top}px;
+    width: {feet_width}px;
+    height: {feet_height}px;
     transform: {feet_left_transform};
     transform-origin: center;
   }}
   .preview-feet-right {{
     left: {feet_right}px;
-    top: {feet_top}px;
-    width: {layout.feet_size}px;
-    height: {layout.feet_size}px;
+    top: {feet_right_top}px;
+    width: {feet_width}px;
+    height: {feet_height}px;
     transform: {feet_right_transform};
     transform-origin: center;
   }}
