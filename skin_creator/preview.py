@@ -14,10 +14,15 @@ class PreviewLayout:
     body_size: int = 134
     body_top: int = 190
     body_left_offset: int = 0
+    body_rotation: float = 0.0
     hand_size: int = 52
     hand_offset_x: int = 32
     hand_offset_y: int = 34
     hand_top: Optional[int] = None
+    hand_rotation_left: float = 0.0
+    hand_rotation_right: float = 0.0
+    right_hand_mirror: bool = True
+    hands_above_body: bool = True
     backpack_size: int = 148
     backpack_top: int = 110
     backpack_offset_x: int = 0
@@ -25,12 +30,17 @@ class PreviewLayout:
     overlay_size: int = 160
     overlay_offset_x: int = 0
     overlay_offset_y: int = 0
+    overlay_above_body: bool = True
     show_overlay: bool = True
     show_feet: bool = False
     feet_size: int = 38
     feet_offset_x: int = 28
     feet_offset_y: int = 12
     feet_top: Optional[int] = None
+    feet_rotation_left: float = 0.0
+    feet_rotation_right: float = 0.0
+    right_foot_mirror: bool = True
+    feet_above_body: bool = True
 
 
 @dataclass(frozen=True)
@@ -47,28 +57,27 @@ PREVIEW_PRESETS: Mapping[str, PreviewPreset] = OrderedDict(
             layout=PreviewLayout(
                 stage_width=360,
                 stage_height=420,
-                body_size=132,
-                body_top=176,
-                hand_size=54,
-                hand_offset_x=40,
-                hand_offset_y=32,
-                backpack_size=168,
-                backpack_top=72,
-                backpack_offset_x=0,
-                overlay_size=180,
-                overlay_offset_y=-8,
+                body_size=150,
+                body_top=156,
+                hand_size=60,
+                hand_offset_x=70,
+                hand_top=282,
+                backpack_size=192,
+                backpack_top=68,
+                overlay_size=200,
+                overlay_offset_y=-10,
             ),
             description="Backpack, armor ring, and helmet aligned like the loadout preview.",
         ),
         "Standing": PreviewPreset(
             layout=PreviewLayout(
-                stage_width=260,
-                stage_height=320,
-                body_size=124,
-                body_top=128,
-                hand_size=48,
-                hand_offset_x=34,
-                hand_offset_y=28,
+                stage_width=300,
+                stage_height=280,
+                body_size=140,
+                body_top=92,
+                hand_size=56,
+                hand_offset_x=78,
+                hand_top=206,
                 show_backpack=False,
                 show_overlay=False,
             ),
@@ -78,21 +87,26 @@ PREVIEW_PRESETS: Mapping[str, PreviewPreset] = OrderedDict(
             layout=PreviewLayout(
                 stage_width=320,
                 stage_height=320,
-                body_size=116,
-                body_top=112,
-                hand_size=46,
-                hand_offset_x=58,
-                hand_offset_y=40,
-                hand_top=88,
+                body_size=130,
+                body_top=118,
+                body_rotation=-28,
+                hand_size=50,
+                hand_offset_x=34,
+                hand_top=222,
+                hand_rotation_left=-18,
+                hand_rotation_right=18,
+                hands_above_body=False,
                 show_backpack=False,
                 show_overlay=False,
                 show_feet=True,
-                feet_size=42,
-                feet_offset_x=52,
-                feet_offset_y=28,
-                feet_top=188,
+                feet_size=44,
+                feet_offset_x=36,
+                feet_top=244,
+                feet_rotation_left=-22,
+                feet_rotation_right=22,
+                feet_above_body=False,
             ),
-            description="Top-down knocked pose with hands and feet visible.",
+            description="Top-down knocked pose with limbs tucked under the tilted body.",
         ),
     }
 )
@@ -118,31 +132,62 @@ def build_preview_html(uris: Dict[str, str], layout: PreviewLayout = PreviewLayo
         else layout.body_top + layout.body_size - layout.feet_offset_y
     )
 
+    def _build_transform(parts: Optional[list[Optional[str]]]) -> str:
+        filtered = [part for part in (parts or []) if part]
+        if not filtered:
+            return "rotate(0deg)"
+        return " ".join(filtered)
+
+    body_transform = _build_transform([f"rotate({layout.body_rotation}deg)"])
+    hand_left_transform = _build_transform([f"rotate({layout.hand_rotation_left}deg)"])
+    hand_right_transform = _build_transform(
+        ["scaleX(-1)" if layout.right_hand_mirror else None, f"rotate({layout.hand_rotation_right}deg)"]
+    )
+    feet_left_transform = _build_transform([f"rotate({layout.feet_rotation_left}deg)"])
+    feet_right_transform = _build_transform(
+        ["scaleX(-1)" if layout.right_foot_mirror else None, f"rotate({layout.feet_rotation_right}deg)"]
+    )
+
+    backpack_html = (
+        f'<img class="preview-backpack" src="{uris["backpack"]}" alt="Backpack" />'
+        if layout.show_backpack
+        else ""
+    )
+    body_html = f'<img class="preview-body" src="{uris["body"]}" alt="Body" />'
+    overlay_html = (
+        f'<img class="preview-overlay" src="{uris["overlay"]}" alt="Body overlay" />'
+        if layout.show_overlay
+        else ""
+    )
+    hand_left_html = f'<img class="preview-hand-left" src="{uris["hands"]}" alt="Left hand" />'
+    hand_right_html = f'<img class="preview-hand-right" src="{uris["hands"]}" alt="Right hand" />'
+    feet_left_html = (
+        f'<img class="preview-feet-left" src="{uris["feet"]}" alt="Left foot" />'
+        if layout.show_feet
+        else ""
+    )
+    feet_right_html = (
+        f'<img class="preview-feet-right" src="{uris["feet"]}" alt="Right foot" />'
+        if layout.show_feet
+        else ""
+    )
+
     stage_images = []
     if layout.show_backpack:
-        stage_images.append(
-            f'<img class="preview-backpack" src="{uris["backpack"]}" alt="Backpack" />'
-        )
-    stage_images.append(
-        f'<img class="preview-body" src="{uris["body"]}" alt="Body" />'
-    )
-    if layout.show_overlay:
-        stage_images.append(
-            f'<img class="preview-overlay" src="{uris["overlay"]}" alt="Body overlay" />'
-        )
-    stage_images.append(
-        f'<img class="preview-hand-left" src="{uris["hands"]}" alt="Left hand" />'
-    )
-    stage_images.append(
-        f'<img class="preview-hand-right" src="{uris["hands"]}" alt="Right hand" />'
-    )
-    if layout.show_feet:
-        stage_images.append(
-            f'<img class="preview-feet-left" src="{uris["feet"]}" alt="Left foot" />'
-        )
-        stage_images.append(
-            f'<img class="preview-feet-right" src="{uris["feet"]}" alt="Right foot" />'
-        )
+        stage_images.append(backpack_html)
+    if layout.show_overlay and not layout.overlay_above_body:
+        stage_images.append(overlay_html)
+    if layout.show_feet and not layout.feet_above_body:
+        stage_images.extend([feet_left_html, feet_right_html])
+    if not layout.hands_above_body:
+        stage_images.extend([hand_left_html, hand_right_html])
+    stage_images.append(body_html)
+    if layout.show_overlay and layout.overlay_above_body:
+        stage_images.append(overlay_html)
+    if layout.show_feet and layout.feet_above_body:
+        stage_images.extend([feet_left_html, feet_right_html])
+    if layout.hands_above_body:
+        stage_images.extend([hand_left_html, hand_right_html])
 
     stage_images_html = "\n    ".join(stage_images)
 
@@ -198,6 +243,8 @@ def build_preview_html(uris: Dict[str, str], layout: PreviewLayout = PreviewLayo
     top: {layout.body_top}px;
     width: {layout.body_size}px;
     height: {layout.body_size}px;
+    transform: {body_transform};
+    transform-origin: center;
   }}
   .preview-overlay {{
     left: {overlay_left}px;
@@ -210,13 +257,15 @@ def build_preview_html(uris: Dict[str, str], layout: PreviewLayout = PreviewLayo
     top: {hand_top}px;
     width: {layout.hand_size}px;
     height: {layout.hand_size}px;
+    transform: {hand_left_transform};
+    transform-origin: center;
   }}
   .preview-hand-right {{
     left: {hand_right}px;
     top: {hand_top}px;
     width: {layout.hand_size}px;
     height: {layout.hand_size}px;
-    transform: scaleX(-1);
+    transform: {hand_right_transform};
     transform-origin: center;
   }}
   .preview-feet-left {{
@@ -224,13 +273,15 @@ def build_preview_html(uris: Dict[str, str], layout: PreviewLayout = PreviewLayo
     top: {feet_top}px;
     width: {layout.feet_size}px;
     height: {layout.feet_size}px;
+    transform: {feet_left_transform};
+    transform-origin: center;
   }}
   .preview-feet-right {{
     left: {feet_right}px;
     top: {feet_top}px;
     width: {layout.feet_size}px;
     height: {layout.feet_size}px;
-    transform: scaleX(-1);
+    transform: {feet_right_transform};
     transform-origin: center;
   }}
 </style>
