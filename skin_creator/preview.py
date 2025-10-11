@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Mapping
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,54 @@ class PreviewLayout:
     backpack_top: int = 110
     hand_offset_x: int = 32
     hand_offset_y: int = 34
+
+
+@dataclass(frozen=True)
+class PreviewPreset:
+    """Named preview preset with optional description."""
+
+    layout: PreviewLayout
+    description: str = ""
+
+
+PREVIEW_PRESETS: Mapping[str, PreviewPreset] = OrderedDict(
+    {
+        "Standing (default)": PreviewPreset(
+            layout=PreviewLayout(),
+            description="Standard lobby pose mirroring the in-game loadout card.",
+        ),
+        "Showcase (zoomed)": PreviewPreset(
+            layout=PreviewLayout(
+                stage_width=480,
+                stage_height=520,
+                body_size=148,
+                backpack_size=166,
+                hand_size=56,
+                overlay_size=176,
+                body_top=188,
+                backpack_top=96,
+                hand_offset_x=42,
+                hand_offset_y=30,
+            ),
+            description="Zoomed-in framing for marketing shots or social posts.",
+        ),
+        "Knocked (ground)": PreviewPreset(
+            layout=PreviewLayout(
+                stage_width=520,
+                stage_height=360,
+                body_size=120,
+                backpack_size=140,
+                hand_size=58,
+                overlay_size=160,
+                body_top=180,
+                backpack_top=122,
+                hand_offset_x=18,
+                hand_offset_y=46,
+            ),
+            description="Lowered composition approximating the downed/knocked pose.",
+        ),
+    }
+)
 
 
 def build_preview_html(uris: Dict[str, str], layout: PreviewLayout = PreviewLayout()) -> str:
@@ -143,4 +192,4 @@ def build_preview_html(uris: Dict[str, str], layout: PreviewLayout = PreviewLayo
 """
 
 
-__all__ = ["PreviewLayout", "build_preview_html"]
+__all__ = ["PreviewLayout", "PreviewPreset", "PREVIEW_PRESETS", "build_preview_html"]

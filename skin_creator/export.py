@@ -144,6 +144,58 @@ def adjust_tints_for_sprite_mode(tints: Mapping[str, str], sprite_mode: str) -> 
     return adjusted
 
 
+def build_manifest(
+    ident: str,
+    opts: ExportOpts,
+    filenames: Mapping[str, str],
+    ui_tints: Mapping[str, str],
+    export_tints: Mapping[str, str],
+    sprite_mode: str,
+    preview_preset: str,
+) -> str:
+    """Return a JSON manifest describing exported assets."""
+
+    sprite_files = {key: value for key, value in filenames.items() if value}
+
+    manifest = {
+        "skin": {
+            "ident": ident,
+            "name": opts.skin_name,
+            "lore": opts.lore or None,
+            "rarity": opts.rarity,
+            "flags": {
+                "noDropOnDeath": opts.noDropOnDeath,
+                "noDrop": opts.noDrop,
+                "ghillie": opts.ghillie,
+            },
+            "obstacleType": opts.obstacleType or None,
+            "baseScale": opts.baseScale,
+            "sound": opts.soundPickup,
+        },
+        "sprites": {
+            "mode": sprite_mode,
+            "referenceExtension": opts.ref_ext,
+            "files": sprite_files,
+        },
+        "tints": {
+            "ui": dict(ui_tints),
+            "export": dict(export_tints),
+        },
+        "loot": {
+            "borderEnabled": opts.lootBorderOn,
+            "borderSprite": sprite_files.get("border"),
+            "borderTint": export_tints.get("border"),
+            "innerSprite": sprite_files.get("inner"),
+            "scale": opts.lootScale,
+        },
+        "preview": {
+            "preset": preview_preset,
+        },
+    }
+
+    return json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+
+
 __all__ = [
     "ExportOpts",
     "RARITY_OPTIONS",
@@ -151,5 +203,6 @@ __all__ = [
     "SPRITE_MODE_CUSTOM",
     "adjust_tints_for_sprite_mode",
     "build_filenames",
+    "build_manifest",
     "final_name",
 ]

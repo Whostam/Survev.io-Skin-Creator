@@ -33,9 +33,10 @@ from skin_creator.export import (
     SPRITE_MODE_CUSTOM,
     adjust_tints_for_sprite_mode,
     build_filenames,
+    build_manifest,
 )
 from skin_creator.helpers import hex_to_rgb, rgb_to_ts_hex, sanitize, svg_data_uri
-from skin_creator.preview import build_preview_html
+from skin_creator.preview import PREVIEW_PRESETS, build_preview_html
 from skin_creator.sprites import (
     build_part_svg,
     svg_backpack,
@@ -73,6 +74,18 @@ noDrop = st.sidebar.checkbox("noDrop (never drops)", value=False)
 ghillie = st.sidebar.checkbox("ghillie (match ghillie color in mode)", value=False)
 obstacleType = st.sidebar.text_input("obstacleType (costume skins)", "")
 baseScale = st.sidebar.number_input("baseScale", value=1.0, format="%.2f")
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("Preview")
+preview_names = list(PREVIEW_PRESETS.keys())
+selected_preview_label = st.sidebar.selectbox(
+    "Preview preset",
+    preview_names,
+    index=0,
+)
+selected_preview = PREVIEW_PRESETS[selected_preview_label]
+if selected_preview.description:
+    st.sidebar.caption(selected_preview.description)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Backpack Outline")
@@ -296,7 +309,10 @@ uris = {
     "overlay": svg_data_uri(preview_overlay_svg_text),
 }
 
-st.markdown(build_preview_html(uris), unsafe_allow_html=True)
+st.markdown(
+    build_preview_html(uris, layout=selected_preview.layout),
+    unsafe_allow_html=True,
+)
 
 st.markdown("---")
 
@@ -350,6 +366,15 @@ opts = ExportOpts(
 )
 
 ts_code = opts.ts_block(ident=ident, filenames=filenames, tints=ts_tints)
+manifest_json = build_manifest(
+    ident=ident,
+    opts=opts,
+    filenames=filenames,
+    ui_tints=tints,
+    export_tints=ts_tints,
+    sprite_mode=sprite_mode,
+    preview_preset=selected_preview_label,
+)
 
 left, right = st.columns(2)
 with left:
@@ -359,6 +384,8 @@ with left:
         st.caption(
             "Tint fields are fixed to 0xffffff when exporting separate files so the game keeps your custom colors."
         )
+    with st.expander("Asset manifest (JSON)"):
+        st.code(manifest_json, language="json")
 with right:
     st.subheader("What’s inside the ZIP")
     zip_lines = [
@@ -375,6 +402,7 @@ with right:
         [
             f"- `{filenames['loot']}` (loot icon – shirt silhouette, no stroke)",
             f"- `export/{ident}.ts` (ready `defineOutfitSkin(...)`)",
+            f"- `export/{ident}.manifest.json` (asset + metadata manifest)",
         ]
     )
     st.markdown("\n".join(zip_lines))
@@ -391,6 +419,7 @@ with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
     if loot_border_on and filenames.get("inner"):
         zf.writestr(filenames["inner"].replace(".img", ".svg"), loot_inner_svg_text)
     zf.writestr(f"export/{ident}.ts", ts_code)
+    zf.writestr(f"export/{ident}.manifest.json", manifest_json)
 zip_bytes = buf.getvalue()
 
 st.download_button(
