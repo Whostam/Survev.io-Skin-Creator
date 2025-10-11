@@ -191,18 +191,21 @@ def svg_feet(fill_defs: str, fill_ref: str, cfg, stroke_col="#000", stroke_w=8):
 
 
 def svg_body_preview_overlay(stroke_col: str, stroke_w: int) -> str:
-    W = H = 140
+    # Give the preview overlay extra breathing room so wide outline widths
+    # never clip inside the image bounds.
+    W = H = 160
     parts = [svg_header(W, H)]
     # Outer armor ring to mimic the in-game decorative outline
+    center = W / 2
     parts.append(
-        f'<circle cx="70" cy="70" r="{66 + stroke_w / 2}" fill="none" '
+        f'<circle cx="{center}" cy="{center}" r="{70}" fill="none" '
         f'stroke="{stroke_col}" stroke-width="{stroke_w}" />'
     )
     # Circular helmet accent (preview only)
     helmet_radius = 34
-    helmet_cy = 44
+    helmet_cy = center - 26
     parts.append(
-        f'<circle cx="70" cy="{helmet_cy}" r="{helmet_radius}" fill="#3c7fda" '
+        f'<circle cx="{center}" cy="{helmet_cy}" r="{helmet_radius}" fill="#3c7fda" '
         f'stroke="#174173" stroke-width="{stroke_w}" />'
     )
     parts.append(svg_footer())
@@ -443,18 +446,21 @@ loot_inner_uri = svg_data_uri(loot_inner_svg_text)
 loot_outer_uri = svg_data_uri(loot_outer_svg_text)
 overlay_uri = svg_data_uri(preview_overlay_svg_text)
 
-stage_width, stage_height = 320, 360
+stage_width, stage_height = 420, 460
 body_w = body_h = 140
 backpack_w = backpack_h = 148
 hand_w = hand_h = 44
+overlay_w = overlay_h = 160
 
 body_left = (stage_width - body_w) // 2
-body_top = 120
+body_top = 160
 backpack_left = (stage_width - backpack_w) // 2
-backpack_top = 92
+backpack_top = 122
 hand_left = body_left - 44
 hand_right = stage_width - hand_left - hand_w
 hand_top = body_top + body_h - 40
+overlay_left = body_left - (overlay_w - body_w) // 2
+overlay_top = body_top - (overlay_h - body_h) // 2
 
 combined_preview = f"""
 <style>
@@ -464,6 +470,7 @@ combined_preview = f"""
     height: {stage_height}px;
     flex: 0 0 auto;
     background: transparent;
+    margin-right: 32px;
   }}
   .preview-stage img {{
     position: absolute;
@@ -473,22 +480,28 @@ combined_preview = f"""
     position: relative;
     width: 148px;
     height: 148px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }}
   .loot-stage img {{
     position: absolute;
     image-rendering: optimizeQuality;
-    top: 0;
-    left: 0;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
   }}
-  .loot-outer, .loot-inner {{
+  .loot-outer {{
+    width: 146px;
+    height: 146px;
+  }}
+  .loot-inner {{
     width: 148px;
     height: 148px;
   }}
   .loot-shirt {{
     width: 128px;
     height: 128px;
-    top: 10px;
-    left: 10px;
   }}
   .preview-backpack {{
     left: {backpack_left}px;
@@ -503,10 +516,10 @@ combined_preview = f"""
     height: {body_h}px;
   }}
   .preview-overlay {{
-    left: {body_left}px;
-    top: {body_top}px;
-    width: {body_w}px;
-    height: {body_h}px;
+    left: {overlay_left}px;
+    top: {overlay_top}px;
+    width: {overlay_w}px;
+    height: {overlay_h}px;
   }}
   .preview-hand-left {{
     left: {hand_left}px;
