@@ -15,6 +15,17 @@ import urllib.parse
 def sanitize(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "", name.strip()) or "Custom"
 
+
+def ensure_extension(name: str, ext: str) -> str:
+    name = name.strip()
+    if not name:
+        return ""
+    if name.endswith(f".{ext}"):
+        return name
+    if "." in name:
+        name = name[: name.rfind(".")]
+    return f"{name}.{ext}"
+
 def hex_to_rgb(hex_str: str) -> Tuple[int, int, int]:
     h = hex_str.strip().lstrip("#")
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
@@ -297,6 +308,9 @@ RARITY_OPTIONS = [
     ("Mythic", "Rarity.Mythic"),
 ]
 
+SPRITE_MODE_CUSTOM = "Exported art (custom filenames)"
+SPRITE_MODE_BASE = "Reuse base game sprites"
+
 @dataclass
 class ExportOpts:
     skin_name: str
@@ -402,6 +416,52 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Asset Reference")
 ref_ext = st.sidebar.selectbox("Reference extension used in TS", [".img", ".svg"], index=0)
 st.sidebar.caption("ZIP always contains SVG files; choose how your TS should reference them in-game.")
+
+sprite_mode = st.sidebar.radio(
+    "Sprite filename strategy",
+    (SPRITE_MODE_CUSTOM, SPRITE_MODE_BASE),
+    index=0,
+)
+
+if sprite_mode == SPRITE_MODE_CUSTOM:
+    st.sidebar.caption(
+        "ZIP exports will ship your freshly generated SVGs and the TypeScript snippet "
+        "will reference those unique filenames."
+    )
+
+existing_sprite_ids = {}
+if sprite_mode == SPRITE_MODE_BASE:
+    st.sidebar.caption(
+        "Enter existing sprite IDs without an extension. We'll append the reference "
+        "extension selected above so your TypeScript export points at in-game art. "
+        "The exported tint values still recolor those shared sprites in-game, so your "
+        "custom palette shows up even though the filenames stay stock."
+    )
+    existing_sprite_ids["base"] = st.sidebar.text_input(
+        "Body sprite ID",
+        "player-base-01",
+        key="base-sprite-id",
+    )
+    existing_sprite_ids["hands"] = st.sidebar.text_input(
+        "Hands sprite ID",
+        "player-hands-01",
+        key="hands-sprite-id",
+    )
+    existing_sprite_ids["feet"] = st.sidebar.text_input(
+        "Feet sprite ID",
+        "player-feet-01",
+        key="feet-sprite-id",
+    )
+    existing_sprite_ids["backpack"] = st.sidebar.text_input(
+        "Backpack sprite ID",
+        "player-circle-base-01",
+        key="backpack-sprite-id",
+    )
+    existing_sprite_ids["loot"] = st.sidebar.text_input(
+        "Loot shirt sprite ID",
+        "loot-shirt-01",
+        key="loot-shirt-sprite-id",
+    )
 
 st.sidebar.markdown("---")
 
@@ -631,14 +691,25 @@ ident = f'outfit{sanitize(skin_name)}'
 base_id = sanitize(skin_name).lower()
 ext_ref = "img" if ref_ext == ".img" else "svg"
 
+def final_name(key: str, custom_stub: str) -> str:
+    if sprite_mode == SPRITE_MODE_BASE:
+        existing = existing_sprite_ids.get(key, "")
+        return ensure_extension(existing or custom_stub, ext_ref)
+    return ensure_extension(custom_stub, ext_ref)
+
+
 filenames = {
-    "base": f"player-base-{base_id}.{ext_ref}",
-    "hands": f"player-hands-{base_id}.{ext_ref}",
-    "feet": f"player-feet-{base_id}.{ext_ref}",
-    "backpack": f"player-circle-base-{base_id}.{ext_ref}",
-    "loot": f"loot-shirt-outfit{base_id}.{ext_ref}",
-    "border": f"{loot_border_name}.{ext_ref}" if loot_border_on and loot_border_name else "",
-    "inner": f"{loot_inner_name}.{ext_ref}" if loot_border_on and loot_inner_name else "",
+    "base": final_name("base", f"player-base-{base_id}"),
+    "hands": final_name("hands", f"player-hands-{base_id}"),
+    "feet": final_name("feet", f"player-feet-{base_id}"),
+    "backpack": final_name("backpack", f"player-circle-base-{base_id}"),
+    "loot": final_name("loot", f"loot-shirt-outfit{base_id}"),
+    "border": ensure_extension(loot_border_name, ext_ref)
+    if loot_border_on and loot_border_name
+    else "",
+    "inner": ensure_extension(loot_inner_name, ext_ref)
+    if loot_border_on and loot_inner_name
+    else "",
 }
 
 tints = {
