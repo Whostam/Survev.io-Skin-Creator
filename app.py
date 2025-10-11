@@ -84,7 +84,7 @@ def def_stripes(id_, base, stripe, gap=16, angle=45, opacity=0.6):
         f'<rect x="0" y="0" width="{gap}" height="100%" fill="{stripe}" opacity="{opacity}"/></pattern></defs>'
     )
 
-def build_fill(style: str, base: str, c2: str, extra_color: str, angle: int, gap):
+ def build_fill(style: str, base: str, c2: str, extra_color: str, angle: int, gap):
         return (defs, 'url(#rg)')
     if style == "Diagonal Stripes":
         defs = def_stripes("ds", base, extra_color, gap, angle, opacity)
