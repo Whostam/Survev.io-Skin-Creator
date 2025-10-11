@@ -2,6 +2,7 @@ import io
 import zipfile
 
 import streamlit as st
+import urllib.parse
 
 from skin_creator.export import (
     ExportOpts,
@@ -25,6 +26,37 @@ from skin_creator.sprites import (
     svg_loot_shirt_base,
 )
 
+
+
+def svg_loot_circle_inner(base_hex: str):
+    highlight = lighten(base_hex, 0.25)
+    fade = darken(base_hex, 0.65)
+    parts = [svg_header(148, 148)]
+    parts.append(
+        "<defs>"
+        "<radialGradient id=\"lootInner\" cx=\"50%\" cy=\"50%\" r=\"50%\" gradientUnits=\"userSpaceOnUse\">"
+        f"<stop offset=\"0%\" stop-color=\"{highlight}\" stop-opacity=\"1\"/>"
+        f"<stop offset=\"100%\" stop-color=\"{fade}\" stop-opacity=\"0\"/>"
+        "</radialGradient>"
+        "</defs>"
+    )
+    parts.append(
+        '<ellipse cx="74" cy="74" rx="68.861" ry="68.769" fill="url(#lootInner)" />'
+    )
+    parts.append(svg_footer())
+    return "\n".join(parts)
+
+
+def svg_loot_circle_outer(stroke_hex: str):
+    fill_col = lighten(stroke_hex, 0.6)
+    parts = [svg_header(146, 146)]
+    parts.append(
+        f'<ellipse cx="73" cy="73" rx="68.861" ry="68.769" fill="{fill_col}" '
+        'fill-opacity="0.27" '
+        f'stroke="{stroke_hex}" stroke-width="6.21" stroke-opacity="0.77" />'
+    )
+    parts.append(svg_footer())
+    return "\n".join(parts)
 
 # ---------------------------
 # Streamlit configuration
@@ -78,6 +110,66 @@ ref_ext = st.sidebar.selectbox("Reference extension used in TS", [".img", ".svg"
 st.sidebar.caption(
     "ZIP always contains SVG files; choose how your TS should reference them in-game."
 )
+
+sprite_mode = st.sidebar.radio(
+    "Sprite filename strategy",
+    (SPRITE_MODE_CUSTOM, SPRITE_MODE_BASE),
+    index=0,
+)
+
+custom_dirs = {"player": "img/player/", "loot": "img/loot/"}
+
+if sprite_mode == SPRITE_MODE_CUSTOM:
+    st.sidebar.caption(
+        "ZIP exports will ship your freshly generated SVGs and the TypeScript snippet "
+        "will reference those unique filenames."
+    )
+    custom_dirs["player"] = st.sidebar.text_input(
+        "Player sprite folder",
+        "img/player/",
+    )
+    custom_dirs["loot"] = st.sidebar.text_input(
+        "Loot sprite folder",
+        "img/loot/",
+    )
+    st.sidebar.info(
+        "When exporting separate files, Survev expects tint values to stay at 0xffffff. "
+        "We'll set those automatically in the TypeScript snippet so your custom art renders correctly."
+    )
+
+existing_sprite_ids = {}
+if sprite_mode == SPRITE_MODE_BASE:
+    st.sidebar.caption(
+        "Enter existing sprite IDs without an extension. We'll append the reference "
+        "extension selected above so your TypeScript export points at in-game art. "
+        "The exported tint values still recolor those shared sprites in-game, so your "
+        "custom palette shows up even though the filenames stay stock."
+    )
+    existing_sprite_ids["base"] = st.sidebar.text_input(
+        "Body sprite ID",
+        "player-base-01",
+        key="base-sprite-id",
+    )
+    existing_sprite_ids["hands"] = st.sidebar.text_input(
+        "Hands sprite ID",
+        "player-hands-01",
+        key="hands-sprite-id",
+    )
+    existing_sprite_ids["feet"] = st.sidebar.text_input(
+        "Feet sprite ID",
+        "player-feet-01",
+        key="feet-sprite-id",
+    )
+    existing_sprite_ids["backpack"] = st.sidebar.text_input(
+        "Backpack sprite ID",
+        "player-circle-base-01",
+        key="backpack-sprite-id",
+    )
+    existing_sprite_ids["loot"] = st.sidebar.text_input(
+        "Loot shirt sprite ID",
+        "loot-shirt-01",
+        key="loot-shirt-sprite-id",
+    )
 
 sprite_mode = st.sidebar.radio(
     "Sprite filename strategy",
