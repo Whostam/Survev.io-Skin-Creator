@@ -1,13 +1,19 @@
-import io
-import json
-import re
-import zipfile
-from dataclasses import dataclass
-from typing import Tuple
-from typing import Optional, Tuple
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/app.py b/app.py
+index 797fa6a8a6d34cbd1d2e072466e7eba963c129ae..737dd1cdd308e4df4761550d072d8866632e5478 100644
+--- a/app.py
++++ b/app.py
+@@ -1,57 +1,86 @@
+ import io
+ import json
+ import re
+ import zipfile
+ from dataclasses import dataclass
+-from typing import Tuple
++from typing import Optional, Tuple
  
-import streamlit as st
-import urllib.parse
+ import streamlit as st
++import urllib.parse
  
  # ---------------------------
  # Helpers
@@ -526,4 +532,6 @@ import urllib.parse
      data=zip_bytes,
      file_name=f"{base_id}_survev_skin.zip",
      mime="application/zip",
- )
+ ) 
+EOF
+)
