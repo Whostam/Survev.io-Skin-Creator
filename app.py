@@ -26,6 +26,17 @@ def ensure_extension(name: str, ext: str) -> str:
         name = name[: name.rfind(".")]
     return f"{name}.{ext}"
 
+
+def apply_prefix(prefix: str, filename: str) -> str:
+    if "/" in filename:
+        return filename
+    prefix = prefix.strip()
+    if not prefix:
+        return filename
+    if not prefix.endswith("/"):
+        prefix = prefix + "/"
+    return f"{prefix}{filename}"
+
 def hex_to_rgb(hex_str: str) -> Tuple[int, int, int]:
     h = hex_str.strip().lstrip("#")
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
@@ -299,13 +310,11 @@ def svg_loot_circle_outer(stroke_hex: str):
 
 RARITY_OPTIONS = [
     ("(omit)", None),
-    ("Stock", "Rarity.Stock"),
-    ("Common", "Rarity.Common"),
-    ("Uncommon", "Rarity.Uncommon"),
-    ("Rare", "Rarity.Rare"),
-    ("Epic", "Rarity.Epic"),
-    ("Legendary", "Rarity.Legendary"),
-    ("Mythic", "Rarity.Mythic"),
+    ("1 - Common", "1"),
+    ("2 - Uncommon", "2"),
+    ("3 - Rare", "3"),
+    ("4 - Epic", "4"),
+    ("5 - Mythic", "5"),
 ]
 
 SPRITE_MODE_CUSTOM = "Exported art (custom filenames)"
@@ -385,6 +394,9 @@ st.sidebar.title("Meta")
 skin_name = st.sidebar.text_input("Skin name", "Basic Outfit")
 lore = st.sidebar.text_area("Lore / description", "")
 rarity_label = st.sidebar.selectbox("Rarity", [label for label, _ in RARITY_OPTIONS], index=0)
+st.sidebar.caption(
+    "Use the numeric rarity values from 1 (Common) to 5 (Mythic). Leave on '(omit)' for Stock skins."
+)
 noDropOnDeath = st.sidebar.checkbox("noDropOnDeath (keep on death)", value=False)
 noDrop = st.sidebar.checkbox("noDrop (never drops)", value=False)
 ghillie = st.sidebar.checkbox("ghillie (match ghillie color in mode)", value=False)
@@ -423,10 +435,24 @@ sprite_mode = st.sidebar.radio(
     index=0,
 )
 
+custom_dirs = {"player": "img/player/", "loot": "img/loot/"}
+
 if sprite_mode == SPRITE_MODE_CUSTOM:
     st.sidebar.caption(
         "ZIP exports will ship your freshly generated SVGs and the TypeScript snippet "
         "will reference those unique filenames."
+    )
+    custom_dirs["player"] = st.sidebar.text_input(
+        "Player sprite folder",
+        "img/player/",
+    )
+    custom_dirs["loot"] = st.sidebar.text_input(
+        "Loot sprite folder",
+        "img/loot/",
+    )
+    st.sidebar.info(
+        "When exporting separate files, Survev expects tint values to stay at 0xffffff. "
+        "We'll set those automatically in the TypeScript snippet so your custom art renders correctly."
     )
 
 existing_sprite_ids = {}
@@ -469,9 +495,14 @@ st.sidebar.subheader("Loot Icon (defaults to BaseDefs)")
 loot_border_on = st.sidebar.checkbox("Include loot border + scale fields", value=True)
 loot_border_name = st.sidebar.text_input("Outer circle sprite name", "loot-circle-outer-01")
 loot_inner_name = st.sidebar.text_input("Inner circle sprite name", "loot-circle-inner-01")
-loot_border_tint = st.sidebar.color_picker("Outer circle stroke tint", "#000000")
+loot_border_tint = st.sidebar.color_picker("Outer circle stroke tint", "#ffffff")
 loot_inner_glow = st.sidebar.color_picker("Inner circle glow color", "#fcfcfc")
 loot_scale = st.sidebar.slider("Loot scale", 0.05, 0.5, 0.20)
+
+if rgb_to_ts_hex(hex_to_rgb(loot_border_tint)) == "0x000000":
+    st.sidebar.warning(
+        "Survev hides loot borders tinted 0x000000. Try 0xffffff to keep the circle visible."
+    )
 
 def part_controls(title, defaults):
     st.sidebar.markdown("---")
@@ -692,10 +723,18 @@ base_id = sanitize(skin_name).lower()
 ext_ref = "img" if ref_ext == ".img" else "svg"
 
 def final_name(key: str, custom_stub: str) -> str:
+    stub_with_ext = ensure_extension(custom_stub, ext_ref)
     if sprite_mode == SPRITE_MODE_BASE:
         existing = existing_sprite_ids.get(key, "")
-        return ensure_extension(existing or custom_stub, ext_ref)
-    return ensure_extension(custom_stub, ext_ref)
+        if existing:
+            return ensure_extension(existing, ext_ref)
+        return stub_with_ext
+    if sprite_mode == SPRITE_MODE_CUSTOM:
+        if key in {"base", "hands", "feet", "backpack"}:
+            return apply_prefix(custom_dirs["player"], stub_with_ext)
+        if key in {"loot", "border", "inner"}:
+            return apply_prefix(custom_dirs["loot"], stub_with_ext)
+    return stub_with_ext
 
 
 filenames = {
@@ -704,10 +743,10 @@ filenames = {
     "feet": final_name("feet", f"player-feet-{base_id}"),
     "backpack": final_name("backpack", f"player-circle-base-{base_id}"),
     "loot": final_name("loot", f"loot-shirt-outfit{base_id}"),
-    "border": ensure_extension(loot_border_name, ext_ref)
+    "border": final_name("border", loot_border_name)
     if loot_border_on and loot_border_name
     else "",
-    "inner": ensure_extension(loot_inner_name, ext_ref)
+    "inner": final_name("inner", loot_inner_name)
     if loot_border_on and loot_inner_name
     else "",
 }
@@ -720,6 +759,12 @@ tints = {
     "loot": rgb_to_ts_hex(hex_to_rgb(loot_icon_tint)),
     "border": rgb_to_ts_hex(hex_to_rgb(loot_border_tint)),
 }
+
+ts_tints = dict(tints)
+if sprite_mode == SPRITE_MODE_CUSTOM:
+    for key in ("base", "hand", "foot", "backpack", "loot", "border"):
+        if key in ts_tints and ts_tints[key]:
+            ts_tints[key] = "0xffffff"
 
 rarity_value = next(value for label, value in RARITY_OPTIONS if label == rarity_label)
 
@@ -740,12 +785,16 @@ opts = ExportOpts(
     ref_ext=ref_ext,
 )
 
-ts_code = opts.ts_block(ident=ident, filenames=filenames, tints=tints)
+ts_code = opts.ts_block(ident=ident, filenames=filenames, tints=ts_tints)
 
 left, right = st.columns(2)
 with left:
     st.subheader("TypeScript export")
     st.code(ts_code, language="typescript")
+    if sprite_mode == SPRITE_MODE_CUSTOM:
+        st.caption(
+            "Tint fields are fixed to 0xffffff when exporting separate files so the game keeps your custom colors."
+        )
 with right:
     st.subheader("What’s inside the ZIP")
     zip_lines = [
