@@ -36,7 +36,11 @@ from skin_creator.export import (
     build_manifest,
 )
 from skin_creator.helpers import hex_to_rgb, rgb_to_ts_hex, sanitize, svg_data_uri
-from skin_creator.preview import PREVIEW_PRESETS, build_preview_html
+from skin_creator.preview import (
+    PREVIEW_PRESETS,
+    body_frame_from_layout,
+    build_preview_html,
+)
 from skin_creator.sprites import (
     build_part_svg,
     svg_accessory,
@@ -89,6 +93,8 @@ selected_preview_label = st.sidebar.selectbox(
 selected_preview = PREVIEW_PRESETS[selected_preview_label]
 if selected_preview.description:
     st.sidebar.caption(selected_preview.description)
+selected_layout = selected_preview.layout
+body_frame = body_frame_from_layout(selected_layout)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Backpack Outline")
@@ -195,13 +201,17 @@ if rgb_to_ts_hex(hex_to_rgb(loot_border_tint)) == "0x000000":
     )
 
 
-def part_controls(title, defaults, allow_upload=False, show_header=True):
-    section_key = title.lower().replace(" ", "-")
+def part_controls(title, defaults, allow_upload=False, show_header=True, key_prefix=None):
+    section_key = key_prefix or title.lower().replace(" ", "-")
     if show_header:
         st.sidebar.markdown("---")
         st.sidebar.subheader(title)
-    primary = st.sidebar.color_picker(f"{title} primary", defaults["primary"])
-    secondary = st.sidebar.color_picker(f"{title} secondary", defaults["secondary"])
+    primary = st.sidebar.color_picker(
+        f"{title} primary", defaults["primary"], key=f"{section_key}-primary"
+    )
+    secondary = st.sidebar.color_picker(
+        f"{title} secondary", defaults["secondary"], key=f"{section_key}-secondary"
+    )
     style = st.sidebar.selectbox(
         f"{title} fill",
         [
@@ -216,14 +226,30 @@ def part_controls(title, defaults, allow_upload=False, show_header=True):
             "Checker",
         ],
         index=0,
-        key=f"{title}-style",
+        key=f"{section_key}-style",
     )
-    extra = st.sidebar.color_picker(f"{title} pattern/extra color", defaults["extra"])
-    angle = st.sidebar.slider(f"{title} angle (gradients/stripes)", 0, 180, defaults["angle"])
-    gap = st.sidebar.slider(f"{title} gap/spacing", 6, 48, defaults["gap"])
-    opacity = st.sidebar.slider(f"{title} pattern opacity", 0.0, 1.0, defaults["opacity"])
-    size = st.sidebar.slider(f"{title} dot/check size", 4, 40, defaults["size"])
-    tint = st.sidebar.color_picker(f"{title} tint (OutfitDef)", defaults["tint"])
+    extra = st.sidebar.color_picker(
+        f"{title} pattern/extra color", defaults["extra"], key=f"{section_key}-extra"
+    )
+    angle = st.sidebar.slider(
+        f"{title} angle (gradients/stripes)", 0, 180, defaults["angle"], key=f"{section_key}-angle"
+    )
+    gap = st.sidebar.slider(
+        f"{title} gap/spacing", 6, 48, defaults["gap"], key=f"{section_key}-gap"
+    )
+    opacity = st.sidebar.slider(
+        f"{title} pattern opacity",
+        0.0,
+        1.0,
+        defaults["opacity"],
+        key=f"{section_key}-opacity",
+    )
+    size = st.sidebar.slider(
+        f"{title} dot/check size", 4, 40, defaults["size"], key=f"{section_key}-size"
+    )
+    tint = st.sidebar.color_picker(
+        f"{title} tint (OutfitDef)", defaults["tint"], key=f"{section_key}-tint"
+    )
     upload_bytes = None
     upload_mime = ""
     upload_active = False
@@ -358,28 +384,60 @@ if front_enabled:
         front_stub_default,
         key="front-sprite-stub",
     )
-    front_tint_hex = st.sidebar.color_picker("Accessory tint (OutfitDef)", "#ffffff")
+    front_tint_hex = st.sidebar.color_picker(
+        "Accessory tint (OutfitDef)", "#ffffff", key="front-export-tint"
+    )
     front_above_hand = st.sidebar.checkbox(
         "Draw accessory above hands in-game",
         value=False,
         key="front-above-hands",
     )
-    front_pos_x = st.sidebar.slider("Front sprite offset X", -24, 24, 0, 1)
-    front_pos_y = st.sidebar.slider("Front sprite offset Y", -24, 24, 0, 1)
+    front_pos_x = st.sidebar.slider(
+        "Front sprite offset X", -24, 24, 0, 1, key="front-offset-x"
+    )
+    front_pos_y = st.sidebar.slider(
+        "Front sprite offset Y", -24, 24, 0, 1, key="front-offset-y"
+    )
     st.sidebar.caption("Offsets mirror the `frontSpritePos` values applied in-game.")
 
     st.sidebar.markdown("**Preview placement**")
-    front_preview_left = st.sidebar.number_input("Preview left (px)", value=100, step=1)
-    front_preview_top = st.sidebar.number_input("Preview top (px)", value=150, step=1)
-    front_preview_width = st.sidebar.number_input("Preview width (px)", value=200, step=1)
-    front_preview_height = st.sidebar.number_input("Preview height (px)", value=200, step=1)
+    front_preview_key_prefix = f"front-preview-{selected_preview_label.lower()}"
+    default_front_left = body_frame.left
+    default_front_top = body_frame.top
+    default_front_width = body_frame.width
+    default_front_height = body_frame.height
+    default_front_rotation = body_frame.rotation
+    front_preview_left = st.sidebar.number_input(
+        "Preview left (px)",
+        value=int(default_front_left),
+        step=1,
+        key=f"{front_preview_key_prefix}-left",
+    )
+    front_preview_top = st.sidebar.number_input(
+        "Preview top (px)",
+        value=int(default_front_top),
+        step=1,
+        key=f"{front_preview_key_prefix}-top",
+    )
+    front_preview_width = st.sidebar.number_input(
+        "Preview width (px)",
+        value=int(default_front_width),
+        step=1,
+        key=f"{front_preview_key_prefix}-width",
+    )
+    front_preview_height = st.sidebar.number_input(
+        "Preview height (px)",
+        value=int(default_front_height),
+        step=1,
+        key=f"{front_preview_key_prefix}-height",
+    )
     front_preview_rotation = st.sidebar.slider(
         "Preview rotation",
-        -45.0,
-        45.0,
-        0.0,
+        -180.0,
+        180.0,
+        float(default_front_rotation),
         1.0,
-        key="front-rotation",
+        key=f"{front_preview_key_prefix}-rotation",
     )
     front_preview = dict(
         enabled=True,
@@ -408,6 +466,7 @@ if front_enabled:
             accessory_defaults,
             allow_upload=False,
             show_header=False,
+            key_prefix="front-accessory",
         )
         front_tint_hex = front_cfg.get("tint", front_tint_hex)
         front_cfg["flare_scale"] = st.sidebar.slider(
@@ -486,7 +545,9 @@ if front_enabled:
     if front_mode == "Generate simple accessory" and front_svg_text:
         front_has_sprite = True
     elif front_mode == "Upload image/SVG" and front_upload_bytes:
-        front_svg_text = svg_from_upload(front_upload_bytes, front_upload_mime, 180, 180)
+        front_svg_text = svg_from_upload(
+            front_upload_bytes, front_upload_mime, body_frame.width, body_frame.height
+        )
         front_has_sprite = True
     if not front_has_sprite:
         front_preview["enabled"] = False
@@ -515,7 +576,7 @@ uris = {
 }
 
 st.markdown(
-    build_preview_html(uris, layout=selected_preview.layout, front=front_preview),
+    build_preview_html(uris, layout=selected_layout, front=front_preview),
     unsafe_allow_html=True,
 )
 
@@ -562,10 +623,6 @@ front_meta = {
     "pos_y": int(front_pos_y),
     "aboveHand": front_above_hand,
 }
-
-ts_tints = adjust_tints_for_sprite_mode(tints, sprite_mode)
-
-rarity_value = next(value for label, value in RARITY_OPTIONS if label == rarity_label)
 
 opts = ExportOpts(
     skin_name=skin_name,

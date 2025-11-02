@@ -73,6 +73,36 @@ class PreviewPreset:
     description: str = ""
 
 
+@dataclass(frozen=True)
+class BodyFrame:
+    """Computed body bounds for use in previews and controls."""
+
+    left: int
+    top: int
+    width: int
+    height: int
+    rotation: float
+
+
+def body_frame_from_layout(layout: PreviewLayout) -> BodyFrame:
+    """Return the body rectangle derived from the provided layout."""
+
+    body_width = layout.body_width if layout.body_width is not None else layout.body_size
+    body_height = layout.body_height if layout.body_height is not None else layout.body_size
+    body_left = (
+        layout.body_left
+        if layout.body_left is not None
+        else (layout.stage_width - body_width) // 2 + layout.body_left_offset
+    )
+    return BodyFrame(
+        left=int(body_left),
+        top=int(layout.body_top),
+        width=int(body_width),
+        height=int(body_height),
+        rotation=float(layout.body_rotation),
+    )
+
+
 PREVIEW_PRESETS: Mapping[str, PreviewPreset] = OrderedDict(
     {
         "Loadout": PreviewPreset(
@@ -161,88 +191,93 @@ def build_preview_html(
     layout: PreviewLayout = PreviewLayout(),
     front: Optional[Dict[str, object]] = None,
 ) -> str:
-    body_width = layout.body_width if layout.body_width is not None else layout.body_size
-    body_height = layout.body_height if layout.body_height is not None else layout.body_size
-    body_left = (
-        layout.body_left
-        if layout.body_left is not None
-        else (layout.stage_width - body_width) // 2 + layout.body_left_offset
-    )
+    body_frame = body_frame_from_layout(layout)
+    body_width = body_frame.width
+    body_height = body_frame.height
+    body_left = body_frame.left
 
-    backpack_width = (
+    backpack_width = int(
         layout.backpack_width if layout.backpack_width is not None else layout.backpack_size
     )
-    backpack_height = (
+    backpack_height = int(
         layout.backpack_height if layout.backpack_height is not None else layout.backpack_size
     )
-    backpack_left = (
+    backpack_left = int(
         layout.backpack_left
         if layout.backpack_left is not None
         else (layout.stage_width - backpack_width) // 2 + layout.backpack_offset_x
     )
 
-    hand_width = layout.hand_width if layout.hand_width is not None else layout.hand_size
-    hand_height = layout.hand_height if layout.hand_height is not None else layout.hand_size
-    hand_left = (
+    hand_width = int(
+        layout.hand_width if layout.hand_width is not None else layout.hand_size
+    )
+    hand_height = int(
+        layout.hand_height if layout.hand_height is not None else layout.hand_size
+    )
+    hand_left = int(
         layout.hand_left
         if layout.hand_left is not None
         else body_left - layout.hand_offset_x
     )
-    hand_right = (
+    hand_right = int(
         layout.hand_right
         if layout.hand_right is not None
         else layout.stage_width - hand_left - hand_width
     )
-    base_hand_top = (
+    base_hand_top = int(
         layout.hand_top
         if layout.hand_top is not None
         else layout.body_top + body_height - layout.hand_offset_y
     )
-    hand_left_top = (
+    hand_left_top = int(
         layout.hand_left_top if layout.hand_left_top is not None else base_hand_top
     )
-    hand_right_top = (
+    hand_right_top = int(
         layout.hand_right_top if layout.hand_right_top is not None else base_hand_top
     )
 
-    overlay_width = (
+    overlay_width = int(
         layout.overlay_width if layout.overlay_width is not None else layout.overlay_size
     )
-    overlay_height = (
+    overlay_height = int(
         layout.overlay_height if layout.overlay_height is not None else layout.overlay_size
     )
-    overlay_left = (
+    overlay_left = int(
         layout.overlay_left
         if layout.overlay_left is not None
         else body_left - (overlay_width - body_width) // 2 + layout.overlay_offset_x
     )
-    overlay_top = (
+    overlay_top = int(
         layout.overlay_top
         if layout.overlay_top is not None
-        else layout.body_top - (overlay_height - body_height) // 2 + layout.overlay_offset_y
+        else body_frame.top - (overlay_height - body_height) // 2 + layout.overlay_offset_y
     )
 
-    feet_width = layout.feet_width if layout.feet_width is not None else layout.feet_size
-    feet_height = layout.feet_height if layout.feet_height is not None else layout.feet_size
-    feet_left = (
+    feet_width = int(
+        layout.feet_width if layout.feet_width is not None else layout.feet_size
+    )
+    feet_height = int(
+        layout.feet_height if layout.feet_height is not None else layout.feet_size
+    )
+    feet_left = int(
         layout.feet_left
         if layout.feet_left is not None
         else body_left - layout.feet_offset_x
     )
-    feet_right = (
+    feet_right = int(
         layout.feet_right
         if layout.feet_right is not None
         else layout.stage_width - feet_left - feet_width
     )
-    base_feet_top = (
+    base_feet_top = int(
         layout.feet_top
         if layout.feet_top is not None
-        else layout.body_top + body_height - layout.feet_offset_y
+        else body_frame.top + body_height - layout.feet_offset_y
     )
-    feet_left_top = (
+    feet_left_top = int(
         layout.feet_left_top if layout.feet_left_top is not None else base_feet_top
     )
-    feet_right_top = (
+    feet_right_top = int(
         layout.feet_right_top if layout.feet_right_top is not None else base_feet_top
     )
 
@@ -252,7 +287,7 @@ def build_preview_html(
             return "rotate(0deg)"
         return " ".join(filtered)
 
-    body_transform = _build_transform([f"rotate({layout.body_rotation}deg)"])
+    body_transform = _build_transform([f"rotate({body_frame.rotation}deg)"])
     hand_left_transform = _build_transform([f"rotate({layout.hand_rotation_left}deg)"])
     hand_right_transform = _build_transform(
         ["scaleX(-1)" if layout.right_hand_mirror else None, f"rotate({layout.hand_rotation_right}deg)"]
@@ -367,7 +402,7 @@ def build_preview_html(
   }}
   .preview-body {{
     left: {body_left}px;
-    top: {layout.body_top}px;
+    top: {body_frame.top}px;
     width: {body_width}px;
     height: {body_height}px;
     transform: {body_transform};
@@ -381,10 +416,10 @@ def build_preview_html(
   }}
   .preview-front {{
     left: {int(front.get("left", body_left))}px;
-    top: {int(front.get("top", layout.body_top))}px;
+    top: {int(front.get("top", body_frame.top))}px;
     width: {int(front.get("width", body_width))}px;
     height: {int(front.get("height", body_height))}px;
-    transform: rotate({float(front.get("rotation", 0.0))}deg);
+    transform: rotate({float(front.get("rotation", body_frame.rotation))}deg);
     transform-origin: center;
   }}
   .preview-hand-left {{
@@ -456,4 +491,11 @@ def build_preview_html(
 """
 
 
-__all__ = ["PreviewLayout", "PreviewPreset", "PREVIEW_PRESETS", "build_preview_html"]
+__all__ = [
+    "PreviewLayout",
+    "PreviewPreset",
+    "BodyFrame",
+    "PREVIEW_PRESETS",
+    "build_preview_html",
+    "body_frame_from_layout",
+]
