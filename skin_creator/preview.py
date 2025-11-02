@@ -176,7 +176,7 @@ PREVIEW_PRESETS: Mapping[str, PreviewPreset] = OrderedDict(
                 feet_left_top=170,
                 feet_right_top=90,
                 feet_rotation_left=216,
-                feet_rotation_right=145,
+                feet_rotation_right=216,
                 right_foot_mirror=False,
                 feet_above_body=False,
             ),

@@ -8,7 +8,6 @@ from .fills import build_fill
 from .helpers import (
     data_uri_from_bytes,
     darken,
-    ensure_utf8,
     lighten,
     outline,
     svg_footer,
@@ -42,17 +41,20 @@ def svg_from_upload(
     mime: str,
     fallback_width: int,
     fallback_height: int,
+    rotation: float = 0.0,
 ) -> str:
     """Wrap an uploaded sprite (SVG or bitmap) in an SVG container."""
 
-    if mime and mime.lower() in {"image/svg+xml", "image/svg"}:
-        return ensure_utf8(data)
-
     data_uri = data_uri_from_bytes(data, mime or "image/png")
     parts = [svg_header(fallback_width, fallback_height)]
+    cx = fallback_width / 2
+    cy = fallback_height / 2
+    transform_attr = ""
+    if rotation:
+        transform_attr = f' transform="rotate({rotation:.2f},{cx:.2f},{cy:.2f})"'
     parts.append(
-        f'<image href="{data_uri}" x="0" y="0" '
-        f'width="{fallback_width}" height="{fallback_height}" preserveAspectRatio="xMidYMid meet" />'
+        f'<image href="{data_uri}" x="0" y="0" width="{fallback_width}" '
+        f'height="{fallback_height}" preserveAspectRatio="xMidYMid meet"{transform_attr} />'
     )
     parts.append(svg_footer())
     return "\n".join(parts)

@@ -43,7 +43,6 @@ from skin_creator.preview import (
 )
 from skin_creator.sprites import (
     build_part_svg,
-    svg_accessory,
     svg_backpack,
     svg_body,
     svg_body_preview_overlay,
@@ -253,6 +252,7 @@ def part_controls(title, defaults, allow_upload=False, show_header=True, key_pre
     upload_bytes = None
     upload_mime = ""
     upload_active = False
+    upload_rotation = 0.0
     if allow_upload:
         st.sidebar.caption(
             "Upload an SVG or PNG to replace the generated sprite for this body part."
@@ -268,8 +268,17 @@ def part_controls(title, defaults, allow_upload=False, show_header=True, key_pre
             upload_active = st.sidebar.checkbox(
                 f"Use uploaded {title.lower()} sprite", value=True, key=f"{section_key}-upload-use"
             )
+            upload_rotation = st.sidebar.slider(
+                f"Rotate uploaded {title.lower()}",
+                min_value=-180.0,
+                max_value=180.0,
+                value=0.0,
+                step=1.0,
+                key=f"{section_key}-upload-rotation",
+            )
         else:
             upload_active = False
+            upload_rotation = 0.0
     return dict(
         primary=primary,
         secondary=secondary,
@@ -283,6 +292,7 @@ def part_controls(title, defaults, allow_upload=False, show_header=True, key_pre
         upload_bytes=upload_bytes,
         upload_mime=upload_mime,
         upload_active=upload_active,
+        upload_rotation=upload_rotation,
     )
 
 
@@ -363,7 +373,7 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Front accessory (optional)")
 front_mode = st.sidebar.selectbox(
     "Front sprite source",
-    ["None", "Generate simple accessory", "Upload image/SVG"],
+    ["None", "Upload image/SVG"],
     index=0,
 )
 front_enabled = front_mode != "None"
@@ -402,11 +412,11 @@ if front_enabled:
 
     st.sidebar.markdown("**Preview placement**")
     front_preview_key_prefix = f"front-preview-{selected_preview_label.lower()}"
-    default_front_left = body_frame.left
-    default_front_top = body_frame.top
-    default_front_width = body_frame.width
-    default_front_height = body_frame.height
-    default_front_rotation = body_frame.rotation
+    default_front_left = 80
+    default_front_top = 140
+    default_front_width = 240
+    default_front_height = 240
+    default_front_rotation = 90.0
     front_preview_left = st.sidebar.number_input(
         "Preview left (px)",
         value=int(default_front_left),
@@ -449,54 +459,7 @@ if front_enabled:
         above_hands=front_above_hand,
     )
 
-    if front_mode == "Generate simple accessory":
-        st.sidebar.markdown("**Accessory fill**")
-        accessory_defaults = dict(
-            primary="#ff8c2d",
-            secondary="#ffb347",
-            extra="#fff4c7",
-            angle=45,
-            gap=18,
-            opacity=0.6,
-            size=14,
-            tint=front_tint_hex,
-        )
-        front_cfg = part_controls(
-            "Accessory",
-            accessory_defaults,
-            allow_upload=False,
-            show_header=False,
-            key_prefix="front-accessory",
-        )
-        front_tint_hex = front_cfg.get("tint", front_tint_hex)
-        front_cfg["flare_scale"] = st.sidebar.slider(
-            "Accessory flare scale",
-            0.8,
-            1.6,
-            1.1,
-            0.05,
-            key="front-flare",
-        )
-        front_cfg["tip_scale"] = st.sidebar.slider(
-            "Accessory tip scale",
-            0.2,
-            0.9,
-            0.45,
-            0.05,
-            key="front-tip",
-        )
-        front_stroke_col = st.sidebar.color_picker("Accessory outline color", "#1f1308")
-        front_stroke_w = st.sidebar.slider(
-            "Accessory outline width",
-            4.0,
-            18.0,
-            10.0,
-            0.5,
-            key="front-outline-width",
-        )
-        front_cfg["tint"] = front_tint_hex
-        front_svg_text = build_part_svg(front_cfg, svg_accessory, front_stroke_col, front_stroke_w)
-    else:
+    if front_mode == "Upload image/SVG":
         uploaded_front = st.sidebar.file_uploader(
             "Upload accessory sprite",
             type=["svg", "png"],
@@ -520,17 +483,35 @@ if sprite_mode == SPRITE_MODE_BASE and front_enabled:
 # ---------------------------
 
 if body_cfg.get("upload_active") and body_cfg.get("upload_bytes"):
-    body_svg_text = svg_from_upload(body_cfg["upload_bytes"], body_cfg.get("upload_mime", ""), 140, 140)
+    body_svg_text = svg_from_upload(
+        body_cfg["upload_bytes"],
+        body_cfg.get("upload_mime", ""),
+        140,
+        140,
+        float(body_cfg.get("upload_rotation", 0.0)),
+    )
 else:
     body_svg_text = build_part_svg(body_cfg, svg_body, None, None)
 
 if hand_cfg.get("upload_active") and hand_cfg.get("upload_bytes"):
-    hands_svg_text = svg_from_upload(hand_cfg["upload_bytes"], hand_cfg.get("upload_mime", ""), 76, 76)
+    hands_svg_text = svg_from_upload(
+        hand_cfg["upload_bytes"],
+        hand_cfg.get("upload_mime", ""),
+        76,
+        76,
+        float(hand_cfg.get("upload_rotation", 0.0)),
+    )
 else:
     hands_svg_text = build_part_svg(hand_cfg, svg_hands, hand_stroke_col, hand_stroke_w)
 
 if bp_cfg.get("upload_active") and bp_cfg.get("upload_bytes"):
-    backpack_svg_text = svg_from_upload(bp_cfg["upload_bytes"], bp_cfg.get("upload_mime", ""), 148, 148)
+    backpack_svg_text = svg_from_upload(
+        bp_cfg["upload_bytes"],
+        bp_cfg.get("upload_mime", ""),
+        148,
+        148,
+        float(bp_cfg.get("upload_rotation", 0.0)),
+    )
 else:
     backpack_svg_text = build_part_svg(bp_cfg, svg_backpack, bp_stroke_col, bp_stroke_w)
 
@@ -542,9 +523,7 @@ preview_overlay_svg_text = svg_body_preview_overlay()
 
 front_has_sprite = False
 if front_enabled:
-    if front_mode == "Generate simple accessory" and front_svg_text:
-        front_has_sprite = True
-    elif front_mode == "Upload image/SVG" and front_upload_bytes:
+    if front_mode == "Upload image/SVG" and front_upload_bytes:
         front_svg_text = svg_from_upload(
             front_upload_bytes, front_upload_mime, body_frame.width, body_frame.height
         )
