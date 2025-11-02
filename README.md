@@ -1,3 +1,4 @@
+# Outdated readme (too lazy to edit)
 # Survev.io Skin Creator (Streamlit)
 
 A tiny one-file Streamlit app to design Survev.io outfits and export:

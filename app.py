@@ -2,6 +2,29 @@ import io
 import zipfile
 
 import streamlit as st
+import urllib.parse
+
+from skin_creator.export import (
+    ExportOpts,
+    RARITY_OPTIONS,
+    SPRITE_MODE_BASE,
+    SPRITE_MODE_CUSTOM,
+    adjust_tints_for_sprite_mode,
+    build_filenames,
+)
+from skin_creator.helpers import hex_to_rgb, rgb_to_ts_hex, sanitize, svg_data_uri
+from skin_creator.preview import build_preview_html
+from skin_creator.sprites import (
+    build_part_svg,
+    svg_backpack,
+    svg_body,
+    svg_body_preview_overlay,
+    svg_feet,
+    svg_hands,
+    svg_loot_circle_inner,
+    svg_loot_circle_outer,
+    svg_loot_shirt_base,
+)
 
 from skin_creator.export import (
     ExportOpts,
@@ -539,6 +562,10 @@ front_meta = {
     "pos_y": int(front_pos_y),
     "aboveHand": front_above_hand,
 }
+
+ts_tints = adjust_tints_for_sprite_mode(tints, sprite_mode)
+
+rarity_value = next(value for label, value in RARITY_OPTIONS if label == rarity_label)
 
 opts = ExportOpts(
     skin_name=skin_name,
