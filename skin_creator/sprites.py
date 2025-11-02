@@ -5,7 +5,15 @@ from __future__ import annotations
 from typing import Callable, Dict, Optional
 
 from .fills import build_fill
-from .helpers import darken, lighten, outline, svg_footer, svg_header
+from .helpers import (
+    data_uri_from_bytes,
+    darken,
+    ensure_utf8,
+    lighten,
+    outline,
+    svg_footer,
+    svg_header,
+)
 
 PartConfig = Dict[str, object]
 
@@ -27,6 +35,27 @@ def build_part_svg(
         cfg["size"],
     )
     return make_svg(defs, fill_ref, cfg, stroke_col, stroke_w)
+
+
+def svg_from_upload(
+    data: bytes,
+    mime: str,
+    fallback_width: int,
+    fallback_height: int,
+) -> str:
+    """Wrap an uploaded sprite (SVG or bitmap) in an SVG container."""
+
+    if mime and mime.lower() in {"image/svg+xml", "image/svg"}:
+        return ensure_utf8(data)
+
+    data_uri = data_uri_from_bytes(data, mime or "image/png")
+    parts = [svg_header(fallback_width, fallback_height)]
+    parts.append(
+        f'<image href="{data_uri}" x="0" y="0" '
+        f'width="{fallback_width}" height="{fallback_height}" preserveAspectRatio="xMidYMid meet" />'
+    )
+    parts.append(svg_footer())
+    return "\n".join(parts)
 
 
 def svg_backpack(
@@ -75,10 +104,49 @@ def svg_hands(
     parts = [svg_header(width, height)]
     if fill_defs:
         parts.append(fill_defs)
-    parts.append(
-        f'<ellipse cx="38" cy="38" rx="30.4" ry="30.4" fill="{fill_ref}" '
-        f"{outline(stroke_col, stroke_w)} />"
-    )
+    shape = cfg.get("shape", "Circle")
+    scale_x = float(cfg.get("shape_scale_x", 1.0))
+    scale_y = float(cfg.get("shape_scale_y", 1.0))
+    cx = cy = 38
+
+    if shape == "Rounded Square":
+        size = 48 * scale_x
+        radius = 12 * scale_y
+        x = cx - size / 2
+        y = cy - size / 2
+        parts.append(
+            f'<rect x="{x:.2f}" y="{y:.2f}" width="{size:.2f}" height="{size:.2f}" '
+            f'rx="{radius:.2f}" ry="{radius:.2f}" fill="{fill_ref}" {outline(stroke_col, stroke_w)} />'
+        )
+    elif shape == "Diamond":
+        half_w = 28 * scale_x
+        half_h = 32 * scale_y
+        points = [
+            (cx, cy - half_h),
+            (cx + half_w, cy),
+            (cx, cy + half_h),
+            (cx - half_w, cy),
+        ]
+        point_str = " ".join(f"{px:.2f},{py:.2f}" for px, py in points)
+        parts.append(
+            f'<polygon points="{point_str}" fill="{fill_ref}" {outline(stroke_col, stroke_w)} />'
+        )
+    elif shape == "Teardrop":
+        radius = 30 * min(scale_x, scale_y)
+        tip_offset = 26 * scale_y
+        parts.append(
+            f'<path d="M {cx - radius:.2f} {cy:.2f} '
+            f'A {radius:.2f} {radius:.2f} 0 1 1 {cx + radius:.2f} {cy:.2f} '
+            f'L {cx:.2f} {cy + tip_offset:.2f} Z" '
+            f'fill="{fill_ref}" {outline(stroke_col, stroke_w)} />'
+        )
+    else:  # Circle / ellipse
+        rx = 30.4 * scale_x
+        ry = 30.4 * scale_y
+        parts.append(
+            f'<ellipse cx="{cx}" cy="{cy}" rx="{rx:.2f}" ry="{ry:.2f}" fill="{fill_ref}" '
+            f"{outline(stroke_col, stroke_w)} />"
+        )
     parts.append(svg_footer())
     return "\n".join(parts)
 
@@ -180,8 +248,47 @@ def svg_loot_circle_outer(stroke_hex: str) -> str:
     return "\n".join(parts)
 
 
+def svg_accessory(
+    fill_defs: str,
+    fill_ref: str,
+    cfg: PartConfig,
+    stroke_col: Optional[str] = None,
+    stroke_w: Optional[float] = None,
+) -> str:
+    """Generate a simple accessory sprite using layered ellipses."""
+
+    width = height = 180
+    parts = [svg_header(width, height)]
+    if fill_defs:
+        parts.append(fill_defs)
+
+    center = width / 2
+    base_radius = 72
+    flare_radius = base_radius * float(cfg.get("flare_scale", 1.1))
+    tip_radius = base_radius * float(cfg.get("tip_scale", 0.45))
+    tip_offset = base_radius * 0.85
+
+    parts.append(
+        f'<circle cx="{center}" cy="{center}" r="{flare_radius:.2f}" fill="{fill_ref}" '
+        f"{outline(stroke_col, stroke_w)} />"
+    )
+    parts.append(
+        f'<circle cx="{center}" cy="{center + 16:.2f}" r="{base_radius:.2f}" fill="{fill_ref}" '
+        f"{outline(stroke_col, stroke_w)} />"
+    )
+    highlight = cfg.get("extra", "#ffffff")
+    parts.append(
+        f'<circle cx="{center}" cy="{center - tip_offset:.2f}" r="{tip_radius:.2f}" fill="{highlight}" '
+        'fill-opacity="0.65" />'
+    )
+    parts.append(svg_footer())
+    return "\n".join(parts)
+
+
 __all__ = [
     "build_part_svg",
+    "svg_accessory",
+    "svg_from_upload",
     "svg_backpack",
     "svg_body",
     "svg_body_preview_overlay",

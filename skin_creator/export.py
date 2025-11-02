@@ -37,6 +37,10 @@ class ExportOpts:
     lootScale: float
     soundPickup: str
     ref_ext: str
+    front_enabled: bool = False
+    front_pos_x: int = 0
+    front_pos_y: int = 0
+    front_above_hand: bool = False
 
     def ts_block(self, ident: str, filenames: Mapping[str, str], tints: Mapping[str, str]) -> str:
         lines = []
@@ -66,6 +70,15 @@ class ExportOpts:
         lines.append(f'    footSprite: "{filenames["feet"]}",')
         lines.append(f'    backpackTint: {tints["backpack"]},')
         lines.append(f'    backpackSprite: "{filenames["backpack"]}",')
+        if filenames.get("front"):
+            if tints.get("front"):
+                lines.append(f'    frontTint: {tints["front"]},')
+            lines.append(f'    frontSprite: "{filenames["front"]}",')
+            lines.append(
+                f'    frontSpritePos: {{ x: {self.front_pos_x}, y: {self.front_pos_y} }},'
+            )
+            if self.front_above_hand:
+                lines.append("    aboveHand: true,")
         lines.append('  },')
 
         lines.append('  lootImg: {')
@@ -102,7 +115,7 @@ def final_name(
             return ensure_extension(existing, ext_ref)
         return stub_with_ext
     if sprite_mode == SPRITE_MODE_CUSTOM:
-        if key in {"base", "hands", "feet", "backpack"}:
+        if key in {"base", "hands", "feet", "backpack", "front"}:
             return apply_prefix(custom_dirs.get("player", ""), stub_with_ext)
         if key in {"loot", "border", "inner"}:
             return apply_prefix(custom_dirs.get("loot", ""), stub_with_ext)
@@ -118,6 +131,8 @@ def build_filenames(
     loot_border_on: bool,
     loot_border_name: str,
     loot_inner_name: str,
+    include_front: bool = False,
+    front_stub: str = "",
 ) -> Dict[str, str]:
     filenames = {
         "base": final_name("base", f"player-base-{base_id}", sprite_mode, existing_sprite_ids, custom_dirs, ext_ref),
@@ -127,11 +142,14 @@ def build_filenames(
         "loot": final_name("loot", f"loot-shirt-outfit{base_id}", sprite_mode, existing_sprite_ids, custom_dirs, ext_ref),
         "border": "",
         "inner": "",
+        "front": "",
     }
     if loot_border_on and loot_border_name:
         filenames["border"] = final_name("border", loot_border_name, sprite_mode, existing_sprite_ids, custom_dirs, ext_ref)
     if loot_border_on and loot_inner_name:
         filenames["inner"] = final_name("inner", loot_inner_name, sprite_mode, existing_sprite_ids, custom_dirs, ext_ref)
+    if include_front and front_stub:
+        filenames["front"] = final_name("front", front_stub, sprite_mode, existing_sprite_ids, custom_dirs, ext_ref)
     return filenames
 
 
@@ -152,10 +170,13 @@ def build_manifest(
     export_tints: Mapping[str, str],
     sprite_mode: str,
     preview_preset: str,
+    front_meta: Optional[Dict[str, object]] = None,
 ) -> str:
     """Return a JSON manifest describing exported assets."""
 
     sprite_files = {key: value for key, value in filenames.items() if value}
+
+    front_meta = front_meta or {}
 
     manifest = {
         "skin": {
@@ -190,6 +211,16 @@ def build_manifest(
         },
         "preview": {
             "preset": preview_preset,
+        },
+        "front": {
+            "enabled": bool(front_meta.get("enabled")),
+            "sprite": sprite_files.get("front"),
+            "tint": export_tints.get("front"),
+            "pos": {
+                "x": front_meta.get("pos_x", opts.front_pos_x),
+                "y": front_meta.get("pos_y", opts.front_pos_y),
+            },
+            "aboveHand": front_meta.get("aboveHand", opts.front_above_hand),
         },
     }
 

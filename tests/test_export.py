@@ -58,6 +58,7 @@ class TestManifest(unittest.TestCase):
             export_tints=self.export_tints,
             sprite_mode=SPRITE_MODE_CUSTOM,
             preview_preset="Standing (default)",
+            front_meta={"enabled": False, "pos_x": 0, "pos_y": 0, "aboveHand": False},
         )
         data = json.loads(manifest_json)
 
@@ -72,6 +73,9 @@ class TestManifest(unittest.TestCase):
         self.assertEqual(data["loot"]["borderEnabled"], True)
         self.assertIsNotNone(data["loot"]["borderSprite"])
         self.assertEqual(data["loot"]["scale"], 0.25)
+        self.assertIn("front", data)
+        self.assertFalse(data["front"]["enabled"])
+        self.assertIn("pos", data["front"])
 
 
 if __name__ == "__main__":

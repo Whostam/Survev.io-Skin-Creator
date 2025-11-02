@@ -146,7 +146,7 @@ PREVIEW_PRESETS: Mapping[str, PreviewPreset] = OrderedDict(
                 feet_left_top=170,
                 feet_right_top=90,
                 feet_rotation_left=216,
-                feet_rotation_right=216,
+                feet_rotation_right=145,
                 right_foot_mirror=False,
                 feet_above_body=False,
             ),
@@ -156,7 +156,11 @@ PREVIEW_PRESETS: Mapping[str, PreviewPreset] = OrderedDict(
 )
 
 
-def build_preview_html(uris: Dict[str, str], layout: PreviewLayout = PreviewLayout()) -> str:
+def build_preview_html(
+    uris: Dict[str, str],
+    layout: PreviewLayout = PreviewLayout(),
+    front: Optional[Dict[str, object]] = None,
+) -> str:
     body_width = layout.body_width if layout.body_width is not None else layout.body_size
     body_height = layout.body_height if layout.body_height is not None else layout.body_size
     body_left = (
@@ -282,6 +286,15 @@ def build_preview_html(uris: Dict[str, str], layout: PreviewLayout = PreviewLayo
         else ""
     )
 
+    front = front or {}
+    front_enabled = bool(front.get("enabled"))
+    front_above_hands = bool(front.get("above_hands"))
+    front_html = (
+        f'<img class="preview-front" src="{uris.get("front", "")}" alt="Accessory" />'
+        if front_enabled and uris.get("front")
+        else ""
+    )
+
     stage_images = []
     if layout.show_backpack:
         stage_images.append(backpack_html)
@@ -294,10 +307,14 @@ def build_preview_html(uris: Dict[str, str], layout: PreviewLayout = PreviewLayo
     stage_images.append(body_html)
     if layout.show_overlay and layout.overlay_above_body:
         stage_images.append(overlay_html)
+    if front_html and not front_above_hands:
+        stage_images.append(front_html)
     if layout.show_feet and layout.feet_above_body:
         stage_images.extend([feet_left_html, feet_right_html])
     if layout.hands_above_body:
         stage_images.extend([hand_left_html, hand_right_html])
+    if front_html and front_above_hands:
+        stage_images.append(front_html)
 
     stage_images_html = "\n    ".join(stage_images)
 
@@ -361,6 +378,14 @@ def build_preview_html(uris: Dict[str, str], layout: PreviewLayout = PreviewLayo
     top: {overlay_top}px;
     width: {overlay_width}px;
     height: {overlay_height}px;
+  }}
+  .preview-front {{
+    left: {int(front.get("left", body_left))}px;
+    top: {int(front.get("top", layout.body_top))}px;
+    width: {int(front.get("width", body_width))}px;
+    height: {int(front.get("height", body_height))}px;
+    transform: rotate({float(front.get("rotation", 0.0))}deg);
+    transform-origin: center;
   }}
   .preview-hand-left {{
     left: {hand_left}px;

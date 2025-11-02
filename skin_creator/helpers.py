@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import re
 import urllib.parse
 from typing import Optional, Tuple
@@ -95,11 +96,24 @@ def svg_data_uri(svg_text: str) -> str:
     """Encode raw SVG text as a data URI for inline previews."""
     return "data:image/svg+xml;utf8," + urllib.parse.quote(svg_text)
 
+
+def data_uri_from_bytes(data: bytes, mime: str) -> str:
+    """Encode arbitrary binary data as a data URI with the provided MIME type."""
+    b64 = base64.b64encode(data).decode("ascii")
+    return f"data:{mime};base64,{b64}"
+
+
+def ensure_utf8(data: bytes) -> str:
+    """Decode uploaded text data as UTF-8 while gracefully handling errors."""
+    return data.decode("utf-8", errors="replace")
+
 __all__ = [
     "apply_prefix",
     "clamp_byte",
+    "data_uri_from_bytes",
     "darken",
     "ensure_extension",
+    "ensure_utf8",
     "hex_to_rgb",
     "lighten",
     "outline",

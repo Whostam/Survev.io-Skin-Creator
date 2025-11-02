@@ -39,10 +39,12 @@ from skin_creator.helpers import hex_to_rgb, rgb_to_ts_hex, sanitize, svg_data_u
 from skin_creator.preview import PREVIEW_PRESETS, build_preview_html
 from skin_creator.sprites import (
     build_part_svg,
+    svg_accessory,
     svg_backpack,
     svg_body,
     svg_body_preview_overlay,
     svg_feet,
+    svg_from_upload,
     svg_hands,
     svg_loot_circle_inner,
     svg_loot_circle_outer,
@@ -63,6 +65,7 @@ st.set_page_config(page_title="Survev.io Skin Creator", page_icon="🎨", layout
 st.sidebar.title("Meta")
 skin_name = st.sidebar.text_input("Skin name", "Basic Outfit")
 lore = st.sidebar.text_area("Lore / description", "")
+base_id = sanitize(skin_name).lower()
 rarity_label = st.sidebar.selectbox(
     "Rarity", [label for label, _ in RARITY_OPTIONS], index=0
 )
@@ -192,9 +195,11 @@ if rgb_to_ts_hex(hex_to_rgb(loot_border_tint)) == "0x000000":
     )
 
 
-def part_controls(title, defaults):
-    st.sidebar.markdown("---")
-    st.sidebar.subheader(title)
+def part_controls(title, defaults, allow_upload=False, show_header=True):
+    section_key = title.lower().replace(" ", "-")
+    if show_header:
+        st.sidebar.markdown("---")
+        st.sidebar.subheader(title)
     primary = st.sidebar.color_picker(f"{title} primary", defaults["primary"])
     secondary = st.sidebar.color_picker(f"{title} secondary", defaults["secondary"])
     style = st.sidebar.selectbox(
@@ -219,6 +224,26 @@ def part_controls(title, defaults):
     opacity = st.sidebar.slider(f"{title} pattern opacity", 0.0, 1.0, defaults["opacity"])
     size = st.sidebar.slider(f"{title} dot/check size", 4, 40, defaults["size"])
     tint = st.sidebar.color_picker(f"{title} tint (OutfitDef)", defaults["tint"])
+    upload_bytes = None
+    upload_mime = ""
+    upload_active = False
+    if allow_upload:
+        st.sidebar.caption(
+            "Upload an SVG or PNG to replace the generated sprite for this body part."
+        )
+        uploaded = st.sidebar.file_uploader(
+            f"Upload custom {title.lower()} sprite",
+            type=["svg", "png"],
+            key=f"{section_key}-upload",
+        )
+        if uploaded is not None:
+            upload_bytes = uploaded.getvalue()
+            upload_mime = uploaded.type or "image/svg+xml"
+            upload_active = st.sidebar.checkbox(
+                f"Use uploaded {title.lower()} sprite", value=True, key=f"{section_key}-upload-use"
+            )
+        else:
+            upload_active = False
     return dict(
         primary=primary,
         secondary=secondary,
@@ -229,6 +254,9 @@ def part_controls(title, defaults):
         opacity=opacity,
         size=size,
         tint=tint,
+        upload_bytes=upload_bytes,
+        upload_mime=upload_mime,
+        upload_active=upload_active,
     )
 
 
@@ -245,6 +273,7 @@ body_cfg = part_controls(
         size=14,
         tint="#f8c574",
     ),
+    allow_upload=True,
 )
 hand_cfg = part_controls(
     "Hands",
@@ -258,7 +287,34 @@ hand_cfg = part_controls(
         size=10,
         tint="#f8c574",
     ),
+    allow_upload=True,
 )
+if hand_cfg.get("upload_active") and hand_cfg.get("upload_bytes"):
+    st.sidebar.info("Using uploaded hands sprite; geometry controls are disabled.")
+else:
+    st.sidebar.caption("Adjust the generated hand geometry.")
+    hand_cfg["shape"] = st.sidebar.selectbox(
+        "Hand shape",
+        ["Circle", "Rounded Square", "Diamond", "Teardrop"],
+        index=0,
+        key="hands-shape",
+    )
+    hand_cfg["shape_scale_x"] = st.sidebar.slider(
+        "Hand width scale",
+        0.6,
+        1.6,
+        1.0,
+        0.05,
+        key="hands-shape-scale-x",
+    )
+    hand_cfg["shape_scale_y"] = st.sidebar.slider(
+        "Hand height scale",
+        0.6,
+        1.6,
+        1.0,
+        0.05,
+        key="hands-shape-scale-y",
+    )
 bp_cfg = part_controls(
     "Backpack",
     dict(
@@ -271,23 +327,171 @@ bp_cfg = part_controls(
         size=12,
         tint="#816537",
     ),
+    allow_upload=True,
 )
 
 loot_icon_tint = st.sidebar.color_picker("Loot shirt tint", "#ffffff")
 feet_stroke_w = hand_stroke_w * (4.513 / 11.096)
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("Front accessory (optional)")
+front_mode = st.sidebar.selectbox(
+    "Front sprite source",
+    ["None", "Generate simple accessory", "Upload image/SVG"],
+    index=0,
+)
+front_enabled = front_mode != "None"
+front_stub_default = f"outfit-{base_id}-accessory" if base_id else "outfit-accessory"
+front_stub = front_stub_default
+front_svg_text = ""
+front_upload_bytes = None
+front_upload_mime = ""
+front_tint_hex = "#ffffff"
+front_above_hand = False
+front_pos_x = 0
+front_pos_y = 0
+front_preview = {"enabled": False}
+
+if front_enabled:
+    front_stub = st.sidebar.text_input(
+        "Front sprite filename base",
+        front_stub_default,
+        key="front-sprite-stub",
+    )
+    front_tint_hex = st.sidebar.color_picker("Accessory tint (OutfitDef)", "#ffffff")
+    front_above_hand = st.sidebar.checkbox(
+        "Draw accessory above hands in-game",
+        value=False,
+        key="front-above-hands",
+    )
+    front_pos_x = st.sidebar.slider("Front sprite offset X", -24, 24, 0, 1)
+    front_pos_y = st.sidebar.slider("Front sprite offset Y", -24, 24, 0, 1)
+    st.sidebar.caption("Offsets mirror the `frontSpritePos` values applied in-game.")
+
+    st.sidebar.markdown("**Preview placement**")
+    front_preview_left = st.sidebar.number_input("Preview left (px)", value=100, step=1)
+    front_preview_top = st.sidebar.number_input("Preview top (px)", value=150, step=1)
+    front_preview_width = st.sidebar.number_input("Preview width (px)", value=200, step=1)
+    front_preview_height = st.sidebar.number_input("Preview height (px)", value=200, step=1)
+    front_preview_rotation = st.sidebar.slider(
+        "Preview rotation",
+        -45.0,
+        45.0,
+        0.0,
+        1.0,
+        key="front-rotation",
+    )
+    front_preview = dict(
+        enabled=True,
+        left=int(front_preview_left),
+        top=int(front_preview_top),
+        width=int(front_preview_width),
+        height=int(front_preview_height),
+        rotation=float(front_preview_rotation),
+        above_hands=front_above_hand,
+    )
+
+    if front_mode == "Generate simple accessory":
+        st.sidebar.markdown("**Accessory fill**")
+        accessory_defaults = dict(
+            primary="#ff8c2d",
+            secondary="#ffb347",
+            extra="#fff4c7",
+            angle=45,
+            gap=18,
+            opacity=0.6,
+            size=14,
+            tint=front_tint_hex,
+        )
+        front_cfg = part_controls(
+            "Accessory",
+            accessory_defaults,
+            allow_upload=False,
+            show_header=False,
+        )
+        front_tint_hex = front_cfg.get("tint", front_tint_hex)
+        front_cfg["flare_scale"] = st.sidebar.slider(
+            "Accessory flare scale",
+            0.8,
+            1.6,
+            1.1,
+            0.05,
+            key="front-flare",
+        )
+        front_cfg["tip_scale"] = st.sidebar.slider(
+            "Accessory tip scale",
+            0.2,
+            0.9,
+            0.45,
+            0.05,
+            key="front-tip",
+        )
+        front_stroke_col = st.sidebar.color_picker("Accessory outline color", "#1f1308")
+        front_stroke_w = st.sidebar.slider(
+            "Accessory outline width",
+            4.0,
+            18.0,
+            10.0,
+            0.5,
+            key="front-outline-width",
+        )
+        front_cfg["tint"] = front_tint_hex
+        front_svg_text = build_part_svg(front_cfg, svg_accessory, front_stroke_col, front_stroke_w)
+    else:
+        uploaded_front = st.sidebar.file_uploader(
+            "Upload accessory sprite",
+            type=["svg", "png"],
+            key="front-upload",
+        )
+        if uploaded_front is not None:
+            front_upload_bytes = uploaded_front.getvalue()
+            front_upload_mime = uploaded_front.type or "image/svg+xml"
+        else:
+            st.sidebar.warning("Upload an SVG or PNG accessory to export a front sprite.")
+
+if sprite_mode == SPRITE_MODE_BASE and front_enabled:
+    existing_sprite_ids["front"] = st.sidebar.text_input(
+        "Front accessory sprite ID",
+        front_stub or front_stub_default,
+        key="front-sprite-id",
+    )
+
 # ---------------------------
 # Build fills & sprites
 # ---------------------------
 
-body_svg_text = build_part_svg(body_cfg, svg_body, None, None)
-hands_svg_text = build_part_svg(hand_cfg, svg_hands, hand_stroke_col, hand_stroke_w)
-backpack_svg_text = build_part_svg(bp_cfg, svg_backpack, bp_stroke_col, bp_stroke_w)
+if body_cfg.get("upload_active") and body_cfg.get("upload_bytes"):
+    body_svg_text = svg_from_upload(body_cfg["upload_bytes"], body_cfg.get("upload_mime", ""), 140, 140)
+else:
+    body_svg_text = build_part_svg(body_cfg, svg_body, None, None)
+
+if hand_cfg.get("upload_active") and hand_cfg.get("upload_bytes"):
+    hands_svg_text = svg_from_upload(hand_cfg["upload_bytes"], hand_cfg.get("upload_mime", ""), 76, 76)
+else:
+    hands_svg_text = build_part_svg(hand_cfg, svg_hands, hand_stroke_col, hand_stroke_w)
+
+if bp_cfg.get("upload_active") and bp_cfg.get("upload_bytes"):
+    backpack_svg_text = svg_from_upload(bp_cfg["upload_bytes"], bp_cfg.get("upload_mime", ""), 148, 148)
+else:
+    backpack_svg_text = build_part_svg(bp_cfg, svg_backpack, bp_stroke_col, bp_stroke_w)
+
 feet_svg_text = build_part_svg(hand_cfg, svg_feet, hand_stroke_col, feet_stroke_w)
 loot_svg_text = svg_loot_shirt_base(loot_icon_tint)
 loot_inner_svg_text = svg_loot_circle_inner(loot_inner_glow)
 loot_outer_svg_text = svg_loot_circle_outer(loot_border_tint)
 preview_overlay_svg_text = svg_body_preview_overlay()
+
+front_has_sprite = False
+if front_enabled:
+    if front_mode == "Generate simple accessory" and front_svg_text:
+        front_has_sprite = True
+    elif front_mode == "Upload image/SVG" and front_upload_bytes:
+        front_svg_text = svg_from_upload(front_upload_bytes, front_upload_mime, 180, 180)
+        front_has_sprite = True
+    if not front_has_sprite:
+        front_preview["enabled"] = False
+front_preview["enabled"] = front_has_sprite
+front_preview["above_hands"] = front_above_hand
 
 # ---------------------------
 # Combined preview
@@ -307,10 +511,11 @@ uris = {
     "loot_inner": svg_data_uri(loot_inner_svg_text),
     "loot_outer": svg_data_uri(loot_outer_svg_text),
     "overlay": svg_data_uri(preview_overlay_svg_text),
+    "front": svg_data_uri(front_svg_text) if front_has_sprite else "",
 }
 
 st.markdown(
-    build_preview_html(uris, layout=selected_preview.layout),
+    build_preview_html(uris, layout=selected_preview.layout, front=front_preview),
     unsafe_allow_html=True,
 )
 
@@ -321,7 +526,6 @@ st.markdown("---")
 # ---------------------------
 
 ident = f"outfit{sanitize(skin_name)}"
-base_id = sanitize(skin_name).lower()
 ext_ref = "img" if ref_ext == ".img" else "svg"
 
 filenames = build_filenames(
@@ -333,6 +537,8 @@ filenames = build_filenames(
     loot_border_on=loot_border_on,
     loot_border_name=loot_border_name,
     loot_inner_name=loot_inner_name,
+    include_front=front_has_sprite,
+    front_stub=front_stub or front_stub_default,
 )
 
 tints = {
@@ -342,6 +548,19 @@ tints = {
     "backpack": rgb_to_ts_hex(hex_to_rgb(bp_cfg["tint"])),
     "loot": rgb_to_ts_hex(hex_to_rgb(loot_icon_tint)),
     "border": rgb_to_ts_hex(hex_to_rgb(loot_border_tint)),
+}
+if front_has_sprite:
+    tints["front"] = rgb_to_ts_hex(hex_to_rgb(front_tint_hex))
+
+ts_tints = adjust_tints_for_sprite_mode(tints, sprite_mode)
+
+rarity_value = next(value for label, value in RARITY_OPTIONS if label == rarity_label)
+
+front_meta = {
+    "enabled": front_has_sprite,
+    "pos_x": int(front_pos_x),
+    "pos_y": int(front_pos_y),
+    "aboveHand": front_above_hand,
 }
 
 ts_tints = adjust_tints_for_sprite_mode(tints, sprite_mode)
@@ -363,6 +582,10 @@ opts = ExportOpts(
     lootScale=float(loot_scale),
     soundPickup="clothes_pickup_01",
     ref_ext=ref_ext,
+    front_enabled=front_has_sprite,
+    front_pos_x=int(front_pos_x),
+    front_pos_y=int(front_pos_y),
+    front_above_hand=front_above_hand,
 )
 
 ts_code = opts.ts_block(ident=ident, filenames=filenames, tints=ts_tints)
@@ -374,6 +597,7 @@ manifest_json = build_manifest(
     export_tints=ts_tints,
     sprite_mode=sprite_mode,
     preview_preset=selected_preview_label,
+    front_meta=front_meta,
 )
 
 left, right = st.columns(2)
@@ -394,6 +618,8 @@ with right:
         f"- `{filenames['feet']}` (feet)",
         f"- `{filenames['backpack']}` (backpack)",
     ]
+    if front_has_sprite and filenames.get("front"):
+        zip_lines.append(f"- `{filenames['front']}` (front accessory)")
     if loot_border_on and filenames.get("border"):
         zip_lines.append(f"- `{filenames['border']}` (loot border)")
     if loot_border_on and filenames.get("inner"):
@@ -418,6 +644,8 @@ with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(filenames["border"].replace(".img", ".svg"), loot_outer_svg_text)
     if loot_border_on and filenames.get("inner"):
         zf.writestr(filenames["inner"].replace(".img", ".svg"), loot_inner_svg_text)
+    if front_has_sprite and filenames.get("front"):
+        zf.writestr(filenames["front"].replace(".img", ".svg"), front_svg_text)
     zf.writestr(f"export/{ident}.ts", ts_code)
     zf.writestr(f"export/{ident}.manifest.json", manifest_json)
 zip_bytes = buf.getvalue()
