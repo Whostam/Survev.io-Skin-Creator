@@ -58,6 +58,49 @@ FILL_STYLES = [
     "Checker",
 ]
 
+
+BODY_DEFAULTS = dict(
+    primary="#f8c574",
+    secondary="#f8c574",
+    extra="#cba86a",
+    style="Solid",
+    angle=45,
+    gap=24,
+    opacity=0.6,
+    size=14,
+    tint="#f8c574",
+)
+
+HAND_DEFAULTS = dict(
+    primary="#f8c574",
+    secondary="#f8c574",
+    extra="#cba86a",
+    style="Solid",
+    angle=45,
+    gap=20,
+    opacity=0.6,
+    size=10,
+    tint="#f8c574",
+)
+
+BACKPACK_DEFAULTS = dict(
+    primary="#816537",
+    secondary="#816537",
+    extra="#6e5630",
+    style="Solid",
+    angle=45,
+    gap=22,
+    opacity=0.6,
+    size=12,
+    tint="#816537",
+)
+
+LOOT_DEFAULTS = dict(
+    shirt="#ffffff",
+    border="#ffffff",
+    inner="#fcfcfc",
+)
+
 st.sidebar.title("Meta")
 skin_name = st.sidebar.text_input("Skin name", "Basic Outfit")
 lore = st.sidebar.text_area("Lore / description", "")
@@ -107,6 +150,12 @@ if selected_preview_label == "Loadout":
 else:
     active_layout = selected_layout
 body_frame = body_frame_from_layout(active_layout)
+
+if st.sidebar.button("🎲 Randomize colors & patterns", key="randomize-palettes"):
+    randomize_all_palettes()
+
+if st.sidebar.button("↩️ Reset to basic outfit", key="reset-palettes"):
+    reset_palettes_to_defaults()
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Backpack Outline")
@@ -203,11 +252,19 @@ st.sidebar.subheader("Loot Icon (defaults to BaseDefs)")
 loot_border_on = st.sidebar.checkbox("Include loot border + scale fields", value=True)
 loot_border_name = st.sidebar.text_input("Outer circle sprite name", "loot-circle-outer-01")
 loot_inner_name = st.sidebar.text_input("Inner circle sprite name", "loot-circle-inner-01")
+if "loot-border-tint" not in st.session_state:
+    st.session_state["loot-border-tint"] = LOOT_DEFAULTS["border"]
 loot_border_tint = st.sidebar.color_picker(
-    "Outer circle stroke tint", "#ffffff", key="loot-border-tint"
+    "Outer circle stroke tint",
+    st.session_state["loot-border-tint"],
+    key="loot-border-tint",
 )
+if "loot-inner-tint" not in st.session_state:
+    st.session_state["loot-inner-tint"] = LOOT_DEFAULTS["inner"]
 loot_inner_glow = st.sidebar.color_picker(
-    "Inner circle glow color", "#fcfcfc", key="loot-inner-tint"
+    "Inner circle glow color",
+    st.session_state["loot-inner-tint"],
+    key="loot-inner-tint",
 )
 loot_scale = st.sidebar.slider("Loot scale", 0.05, 0.5, 0.20)
 
@@ -226,47 +283,64 @@ def part_controls(
     allow_scale=False,
 ):
     section_key = key_prefix or title.lower().replace(" ", "-")
+    for field, default_value in defaults.items():
+        state_key = f"{section_key}-{field}"
+        if state_key not in st.session_state:
+            st.session_state[state_key] = default_value
     if show_header:
         st.sidebar.markdown("---")
         st.sidebar.subheader(title)
     primary = st.sidebar.color_picker(
-        f"{title} primary", defaults["primary"], key=f"{section_key}-primary"
+        f"{title} primary",
+        st.session_state[f"{section_key}-primary"],
+        key=f"{section_key}-primary",
     )
     secondary = st.sidebar.color_picker(
-        f"{title} secondary", defaults["secondary"], key=f"{section_key}-secondary"
+        f"{title} secondary",
+        st.session_state[f"{section_key}-secondary"],
+        key=f"{section_key}-secondary",
     )
     style = st.sidebar.selectbox(
         f"{title} fill",
         FILL_STYLES,
-        index=0,
+        index=FILL_STYLES.index(st.session_state.get(f"{section_key}-style", defaults["style"]))
+        if st.session_state.get(f"{section_key}-style") in FILL_STYLES
+        else 0,
         key=f"{section_key}-style",
     )
     extra = st.sidebar.color_picker(
-        f"{title} pattern/extra color", defaults["extra"], key=f"{section_key}-extra"
+        f"{title} pattern/extra color",
+        st.session_state[f"{section_key}-extra"],
+        key=f"{section_key}-extra",
     )
     angle = st.sidebar.slider(
-        f"{title} angle (gradients/stripes)", 0, 180, defaults["angle"], key=f"{section_key}-angle"
+        f"{title} angle (gradients/stripes)",
+        0,
+        180,
+        st.session_state[f"{section_key}-angle"],
+        key=f"{section_key}-angle",
     )
     gap = st.sidebar.slider(
-        f"{title} gap/spacing", 6, 48, defaults["gap"], key=f"{section_key}-gap"
+        f"{title} gap/spacing", 6, 48, st.session_state[f"{section_key}-gap"], key=f"{section_key}-gap"
     )
     opacity = st.sidebar.slider(
         f"{title} pattern opacity",
         0.0,
         1.0,
-        defaults["opacity"],
+        st.session_state[f"{section_key}-opacity"],
         key=f"{section_key}-opacity",
     )
     size = st.sidebar.slider(
-        f"{title} dot/check size", 4, 40, defaults["size"], key=f"{section_key}-size"
+        f"{title} dot/check size", 4, 40, st.session_state[f"{section_key}-size"], key=f"{section_key}-size"
     )
     tint = st.sidebar.color_picker(
-        f"{title} tint (OutfitDef)", defaults["tint"], key=f"{section_key}-tint"
+        f"{title} tint (OutfitDef)", st.session_state[f"{section_key}-tint"], key=f"{section_key}-tint"
     )
     upload_bytes = None
     upload_mime = ""
     upload_active = False
     upload_rotation = 0.0
+    upload_scale = 1.0
     if allow_upload:
         st.sidebar.caption(
             "Upload an SVG or PNG to replace the generated sprite for this body part."
@@ -295,14 +369,13 @@ def part_controls(
                     f"Scale uploaded {title.lower()}",
                     min_value=0.5,
                     max_value=1.5,
-                    value=1.0,
+                    value=st.session_state.get(f"{section_key}-upload-scale", 1.0),
                     step=0.05,
                     key=f"{section_key}-upload-scale",
                 )
         else:
             upload_active = False
             upload_rotation = 0.0
-            upload_scale = 1.0
     else:
         upload_scale = 1.0
     return dict(
@@ -342,7 +415,20 @@ def randomize_palette(prefix: str):
     st.session_state[f"{prefix}-tint"] = _random_hex()
 
 
-if st.sidebar.button("🎲 Randomize colors & patterns", key="randomize-palettes"):
+def reset_palettes_to_defaults():
+    for prefix, defaults in (
+        ("body", BODY_DEFAULTS),
+        ("hands", HAND_DEFAULTS),
+        ("backpack", BACKPACK_DEFAULTS),
+    ):
+        for field, value in defaults.items():
+            st.session_state[f"{prefix}-{field}"] = value
+    st.session_state["loot-shirt-tint"] = LOOT_DEFAULTS["shirt"]
+    st.session_state["loot-border-tint"] = LOOT_DEFAULTS["border"]
+    st.session_state["loot-inner-tint"] = LOOT_DEFAULTS["inner"]
+
+
+def randomize_all_palettes():
     for prefix in ("body", "hands", "backpack"):
         randomize_palette(prefix)
     st.session_state["loot-shirt-tint"] = _random_hex()
@@ -351,31 +437,13 @@ if st.sidebar.button("🎲 Randomize colors & patterns", key="randomize-palettes
 
 body_cfg = part_controls(
     "Body",
-    dict(
-        primary="#f8c574",
-        secondary="#f8c574",
-        extra="#cba86a",
-        angle=45,
-        gap=24,
-        opacity=0.6,
-        size=14,
-        tint="#f8c574",
-    ),
+    BODY_DEFAULTS,
     allow_upload=True,
     allow_scale=True,
 )
 hand_cfg = part_controls(
     "Hands",
-    dict(
-        primary="#f8c574",
-        secondary="#f8c574",
-        extra="#cba86a",
-        angle=45,
-        gap=20,
-        opacity=0.6,
-        size=10,
-        tint="#f8c574",
-    ),
+    HAND_DEFAULTS,
     allow_upload=True,
 )
 if hand_cfg.get("upload_active") and hand_cfg.get("upload_bytes"):
@@ -406,21 +474,16 @@ else:
     )
 bp_cfg = part_controls(
     "Backpack",
-    dict(
-        primary="#816537",
-        secondary="#816537",
-        extra="#6e5630",
-        angle=45,
-        gap=22,
-        opacity=0.6,
-        size=12,
-        tint="#816537",
-    ),
+    BACKPACK_DEFAULTS,
     allow_upload=True,
 )
 
+if "loot-shirt-tint" not in st.session_state:
+    st.session_state["loot-shirt-tint"] = LOOT_DEFAULTS["shirt"]
 loot_icon_tint = st.sidebar.color_picker(
-    "Loot shirt tint", "#ffffff", key="loot-shirt-tint"
+    "Loot shirt tint",
+    st.session_state["loot-shirt-tint"],
+    key="loot-shirt-tint",
 )
 feet_stroke_w = hand_stroke_w * (4.513 / 11.096)
 
