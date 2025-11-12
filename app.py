@@ -1,30 +1,10 @@
 import io
+import random
 import zipfile
 
-import streamlit as st
-import urllib.parse
+from dataclasses import replace
 
-from skin_creator.export import (
-    ExportOpts,
-    RARITY_OPTIONS,
-    SPRITE_MODE_BASE,
-    SPRITE_MODE_CUSTOM,
-    adjust_tints_for_sprite_mode,
-    build_filenames,
-)
-from skin_creator.helpers import hex_to_rgb, rgb_to_ts_hex, sanitize, svg_data_uri
-from skin_creator.preview import build_preview_html
-from skin_creator.sprites import (
-    build_part_svg,
-    svg_backpack,
-    svg_body,
-    svg_body_preview_overlay,
-    svg_feet,
-    svg_hands,
-    svg_loot_circle_inner,
-    svg_loot_circle_outer,
-    svg_loot_shirt_base,
-)
+import streamlit as st
 
 from skin_creator.export import (
     ExportOpts,
@@ -39,6 +19,7 @@ from skin_creator.helpers import hex_to_rgb, rgb_to_ts_hex, sanitize, svg_data_u
 from skin_creator.preview import (
     PREVIEW_PRESETS,
     body_frame_from_layout,
+    build_preview_document,
     build_preview_html,
 )
 from skin_creator.sprites import (
@@ -59,11 +40,23 @@ from skin_creator.sprites import (
 # Streamlit configuration
 # ---------------------------
 
-st.set_page_config(page_title="Survev.io Skin Creator", page_icon="🎨", layout="wide")
+st.set_page_config(page_title="Zurviv.io Skin Creator", page_icon="🎨", layout="wide")
 
 # ---------------------------
 # Sidebar configuration
 # ---------------------------
+
+FILL_STYLES = [
+    "Solid",
+    "Linear Gradient",
+    "Radial Gradient",
+    "Diagonal Stripes",
+    "Horizontal Stripes",
+    "Vertical Stripes",
+    "Crosshatch",
+    "Dots",
+    "Checker",
+]
 
 st.sidebar.title("Meta")
 skin_name = st.sidebar.text_input("Skin name", "Basic Outfit")
@@ -93,7 +86,27 @@ selected_preview = PREVIEW_PRESETS[selected_preview_label]
 if selected_preview.description:
     st.sidebar.caption(selected_preview.description)
 selected_layout = selected_preview.layout
-body_frame = body_frame_from_layout(selected_layout)
+loadout_overlay_enabled = True
+overlay_above_front = True
+if selected_preview_label == "Loadout":
+    loadout_overlay_enabled = st.sidebar.checkbox(
+        "Show armor + helmet overlay", value=True, key="loadout-overlay-enabled"
+    )
+    overlay_position = st.sidebar.radio(
+        "Armor + helmet layering",
+        ("Above accessory", "Below accessory"),
+        index=0,
+        key="loadout-overlay-order",
+        disabled=not loadout_overlay_enabled,
+    )
+    overlay_above_front = overlay_position == "Above accessory"
+    if loadout_overlay_enabled:
+        active_layout = selected_layout
+    else:
+        active_layout = replace(selected_layout, show_overlay=False)
+else:
+    active_layout = selected_layout
+body_frame = body_frame_from_layout(active_layout)
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Backpack Outline")
@@ -146,7 +159,7 @@ if sprite_mode == SPRITE_MODE_CUSTOM:
         "img/loot/",
     )
     st.sidebar.info(
-        "When exporting separate files, Survev expects tint values to stay at 0xffffff. "
+        "When exporting separate files, Zurviv expects tint values to stay at 0xffffff. "
         "We'll set those automatically in the TypeScript snippet so your custom art renders correctly."
     )
 
@@ -190,17 +203,28 @@ st.sidebar.subheader("Loot Icon (defaults to BaseDefs)")
 loot_border_on = st.sidebar.checkbox("Include loot border + scale fields", value=True)
 loot_border_name = st.sidebar.text_input("Outer circle sprite name", "loot-circle-outer-01")
 loot_inner_name = st.sidebar.text_input("Inner circle sprite name", "loot-circle-inner-01")
-loot_border_tint = st.sidebar.color_picker("Outer circle stroke tint", "#ffffff")
-loot_inner_glow = st.sidebar.color_picker("Inner circle glow color", "#fcfcfc")
+loot_border_tint = st.sidebar.color_picker(
+    "Outer circle stroke tint", "#ffffff", key="loot-border-tint"
+)
+loot_inner_glow = st.sidebar.color_picker(
+    "Inner circle glow color", "#fcfcfc", key="loot-inner-tint"
+)
 loot_scale = st.sidebar.slider("Loot scale", 0.05, 0.5, 0.20)
 
 if rgb_to_ts_hex(hex_to_rgb(loot_border_tint)) == "0x000000":
     st.sidebar.warning(
-        "Survev hides loot borders tinted 0x000000. Try 0xffffff to keep the circle visible."
+        "Zurviv hides loot borders tinted 0x000000. Try 0xffffff to keep the circle visible."
     )
 
 
-def part_controls(title, defaults, allow_upload=False, show_header=True, key_prefix=None):
+def part_controls(
+    title,
+    defaults,
+    allow_upload=False,
+    show_header=True,
+    key_prefix=None,
+    allow_scale=False,
+):
     section_key = key_prefix or title.lower().replace(" ", "-")
     if show_header:
         st.sidebar.markdown("---")
@@ -213,17 +237,7 @@ def part_controls(title, defaults, allow_upload=False, show_header=True, key_pre
     )
     style = st.sidebar.selectbox(
         f"{title} fill",
-        [
-            "Solid",
-            "Linear Gradient",
-            "Radial Gradient",
-            "Diagonal Stripes",
-            "Horizontal Stripes",
-            "Vertical Stripes",
-            "Crosshatch",
-            "Dots",
-            "Checker",
-        ],
+        FILL_STYLES,
         index=0,
         key=f"{section_key}-style",
     )
@@ -276,9 +290,21 @@ def part_controls(title, defaults, allow_upload=False, show_header=True, key_pre
                 step=1.0,
                 key=f"{section_key}-upload-rotation",
             )
+            if allow_scale:
+                upload_scale = st.sidebar.slider(
+                    f"Scale uploaded {title.lower()}",
+                    min_value=0.5,
+                    max_value=1.5,
+                    value=1.0,
+                    step=0.05,
+                    key=f"{section_key}-upload-scale",
+                )
         else:
             upload_active = False
             upload_rotation = 0.0
+            upload_scale = 1.0
+    else:
+        upload_scale = 1.0
     return dict(
         primary=primary,
         secondary=secondary,
@@ -293,10 +319,36 @@ def part_controls(title, defaults, allow_upload=False, show_header=True, key_pre
         upload_mime=upload_mime,
         upload_active=upload_active,
         upload_rotation=upload_rotation,
+        upload_scale=upload_scale,
     )
 
 
 # BaseDefs defaults
+
+
+def _random_hex() -> str:
+    return f"#{random.randint(0, 0xFFFFFF):06x}"
+
+
+def randomize_palette(prefix: str):
+    st.session_state[f"{prefix}-primary"] = _random_hex()
+    st.session_state[f"{prefix}-secondary"] = _random_hex()
+    st.session_state[f"{prefix}-extra"] = _random_hex()
+    st.session_state[f"{prefix}-style"] = random.choice(FILL_STYLES)
+    st.session_state[f"{prefix}-angle"] = random.randint(0, 180)
+    st.session_state[f"{prefix}-gap"] = random.randint(6, 48)
+    st.session_state[f"{prefix}-opacity"] = round(random.uniform(0.2, 1.0), 2)
+    st.session_state[f"{prefix}-size"] = random.randint(4, 40)
+    st.session_state[f"{prefix}-tint"] = _random_hex()
+
+
+if st.sidebar.button("🎲 Randomize colors & patterns", key="randomize-palettes"):
+    for prefix in ("body", "hands", "backpack"):
+        randomize_palette(prefix)
+    st.session_state["loot-shirt-tint"] = _random_hex()
+    st.session_state["loot-border-tint"] = _random_hex()
+    st.session_state["loot-inner-tint"] = _random_hex()
+
 body_cfg = part_controls(
     "Body",
     dict(
@@ -310,6 +362,7 @@ body_cfg = part_controls(
         tint="#f8c574",
     ),
     allow_upload=True,
+    allow_scale=True,
 )
 hand_cfg = part_controls(
     "Hands",
@@ -366,7 +419,9 @@ bp_cfg = part_controls(
     allow_upload=True,
 )
 
-loot_icon_tint = st.sidebar.color_picker("Loot shirt tint", "#ffffff")
+loot_icon_tint = st.sidebar.color_picker(
+    "Loot shirt tint", "#ffffff", key="loot-shirt-tint"
+)
 feet_stroke_w = hand_stroke_w * (4.513 / 11.096)
 
 st.sidebar.markdown("---")
@@ -412,11 +467,13 @@ if front_enabled:
 
     st.sidebar.markdown("**Preview placement**")
     front_preview_key_prefix = f"front-preview-{selected_preview_label.lower()}"
-    default_front_left = 80
-    default_front_top = 140
-    default_front_width = 240
-    default_front_height = 240
-    default_front_rotation = 90.0
+    default_front_left = body_frame.left
+    default_front_top = body_frame.top
+    default_front_width = body_frame.width
+    default_front_height = body_frame.height
+    default_front_rotation = body_frame.rotation
+    if selected_preview_label == "Knocked" and active_layout.show_feet:
+        default_front_rotation = active_layout.feet_rotation_left or default_front_rotation
     front_preview_left = st.sidebar.number_input(
         "Preview left (px)",
         value=int(default_front_left),
@@ -458,6 +515,7 @@ if front_enabled:
         rotation=float(front_preview_rotation),
         above_hands=front_above_hand,
     )
+    front_preview["overlay_above_front"] = overlay_above_front
 
     if front_mode == "Upload image/SVG":
         uploaded_front = st.sidebar.file_uploader(
@@ -478,6 +536,8 @@ if sprite_mode == SPRITE_MODE_BASE and front_enabled:
         key="front-sprite-id",
     )
 
+front_preview.setdefault("overlay_above_front", overlay_above_front)
+
 # ---------------------------
 # Build fills & sprites
 # ---------------------------
@@ -489,6 +549,7 @@ if body_cfg.get("upload_active") and body_cfg.get("upload_bytes"):
         140,
         140,
         float(body_cfg.get("upload_rotation", 0.0)),
+        float(body_cfg.get("upload_scale", 1.0)),
     )
 else:
     body_svg_text = build_part_svg(body_cfg, svg_body, None, None)
@@ -532,14 +593,15 @@ if front_enabled:
         front_preview["enabled"] = False
 front_preview["enabled"] = front_has_sprite
 front_preview["above_hands"] = front_above_hand
+front_preview["overlay_above_front"] = front_preview.get("overlay_above_front", overlay_above_front)
 
 # ---------------------------
 # Combined preview
 # ---------------------------
 
-st.title("Survev.io Skin Creator")
+st.title("Zurviv.io Skin Creator")
 st.caption(
-    "All settings on the left. Preview shows a layered mock-up (backpack, body, armor overlay, hands) plus individual sprites."
+    "All settings on the left. Preview shows a layered mock-up (backpack, body, optional armor overlay, hands, accessory) plus individual sprites."
 )
 
 uris = {
@@ -555,7 +617,7 @@ uris = {
 }
 
 st.markdown(
-    build_preview_html(uris, layout=selected_layout, front=front_preview),
+    build_preview_html(uris, layout=active_layout, front=front_preview),
     unsafe_allow_html=True,
 )
 
@@ -601,6 +663,7 @@ front_meta = {
     "pos_x": int(front_pos_x),
     "pos_y": int(front_pos_y),
     "aboveHand": front_above_hand,
+    "overlayAboveFront": overlay_above_front,
 }
 
 opts = ExportOpts(
@@ -625,6 +688,10 @@ opts = ExportOpts(
 )
 
 ts_code = opts.ts_block(ident=ident, filenames=filenames, tints=ts_tints)
+preview_options = {
+    "overlayEnabled": bool(active_layout.show_overlay),
+    "overlayAboveFront": overlay_above_front,
+}
 manifest_json = build_manifest(
     ident=ident,
     opts=opts,
@@ -634,7 +701,46 @@ manifest_json = build_manifest(
     sprite_mode=sprite_mode,
     preview_preset=selected_preview_label,
     front_meta=front_meta,
+    preview_options=preview_options,
 )
+preview_document_html = build_preview_document(
+    uris, layout=active_layout, front=front_preview
+)
+preview_bytes = preview_document_html.encode("utf-8")
+preview_filename_base = selected_preview_label.lower().replace(" ", "-")
+sprite_exports = [
+    ("base", body_svg_text),
+    ("hands", hands_svg_text),
+    ("feet", feet_svg_text),
+    ("backpack", backpack_svg_text),
+    ("loot", loot_svg_text),
+]
+if loot_border_on and filenames.get("border"):
+    sprite_exports.append(("border", loot_outer_svg_text))
+if loot_border_on and filenames.get("inner"):
+    sprite_exports.append(("inner", loot_inner_svg_text))
+if front_has_sprite and filenames.get("front"):
+    sprite_exports.append(("front", front_svg_text))
+sprite_labels = {
+    "base": "body",
+    "hands": "hands",
+    "feet": "feet",
+    "backpack": "backpack",
+    "loot": "loot icon – shirt silhouette, no stroke",
+    "border": "loot border",
+    "inner": "loot inner glow",
+    "front": "front accessory",
+}
+sprite_button_labels = {
+    "base": "Body",
+    "hands": "Hands",
+    "feet": "Feet",
+    "backpack": "Backpack",
+    "loot": "Loot icon",
+    "border": "Loot border",
+    "inner": "Loot inner glow",
+    "front": "Accessory",
+}
 
 left, right = st.columns(2)
 with left:
@@ -648,21 +754,18 @@ with left:
         st.code(manifest_json, language="json")
 with right:
     st.subheader("What’s inside the ZIP")
-    zip_lines = [
-        f"- `{filenames['base']}` (body)",
-        f"- `{filenames['hands']}` (hands)",
-        f"- `{filenames['feet']}` (feet)",
-        f"- `{filenames['backpack']}` (backpack)",
-    ]
-    if front_has_sprite and filenames.get("front"):
-        zip_lines.append(f"- `{filenames['front']}` (front accessory)")
-    if loot_border_on and filenames.get("border"):
-        zip_lines.append(f"- `{filenames['border']}` (loot border)")
-    if loot_border_on and filenames.get("inner"):
-        zip_lines.append(f"- `{filenames['inner']}` (loot inner glow)")
+    zip_lines = []
+    for key, _ in sprite_exports:
+        name = filenames.get(key)
+        if not name:
+            continue
+        label = sprite_labels.get(key, key)
+        zip_lines.append(f"- `{name}` ({label})")
+    zip_lines.append(
+        f"- `preview/{preview_filename_base}.html` (preview snapshot for {selected_preview_label})"
+    )
     zip_lines.extend(
         [
-            f"- `{filenames['loot']}` (loot icon – shirt silhouette, no stroke)",
             f"- `export/{ident}.ts` (ready `defineOutfitSkin(...)`)",
             f"- `export/{ident}.manifest.json` (asset + metadata manifest)",
         ]
@@ -671,24 +774,70 @@ with right:
 
 buf = io.BytesIO()
 with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-    zf.writestr(filenames["base"].replace(".img", ".svg"), body_svg_text)
-    zf.writestr(filenames["hands"].replace(".img", ".svg"), hands_svg_text)
-    zf.writestr(filenames["feet"].replace(".img", ".svg"), feet_svg_text)
-    zf.writestr(filenames["backpack"].replace(".img", ".svg"), backpack_svg_text)
-    zf.writestr(filenames["loot"].replace(".img", ".svg"), loot_svg_text)
-    if loot_border_on and filenames.get("border"):
-        zf.writestr(filenames["border"].replace(".img", ".svg"), loot_outer_svg_text)
-    if loot_border_on and filenames.get("inner"):
-        zf.writestr(filenames["inner"].replace(".img", ".svg"), loot_inner_svg_text)
-    if front_has_sprite and filenames.get("front"):
-        zf.writestr(filenames["front"].replace(".img", ".svg"), front_svg_text)
+    for key, svg_text in sprite_exports:
+        name = filenames.get(key)
+        if not name:
+            continue
+        zip_name = name if name.endswith(".svg") else name.replace(".img", ".svg")
+        zf.writestr(zip_name, svg_text)
     zf.writestr(f"export/{ident}.ts", ts_code)
     zf.writestr(f"export/{ident}.manifest.json", manifest_json)
+    zf.writestr(f"preview/{preview_filename_base}.html", preview_document_html)
 zip_bytes = buf.getvalue()
 
+sprites_only_buf = io.BytesIO()
+with zipfile.ZipFile(sprites_only_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+    for key, svg_text in sprite_exports:
+        name = filenames.get(key)
+        if not name:
+            continue
+        zip_name = name if name.endswith(".svg") else name.replace(".img", ".svg")
+        zf.writestr(zip_name, svg_text)
+sprites_only_zip_bytes = sprites_only_buf.getvalue()
+
 st.download_button(
-    "⬇️ Download sprites + TypeScript config (ZIP)",
+    "⬇️ Download Zurviv bundle (ZIP)",
     data=zip_bytes,
-    file_name=f"{base_id}_survev_skin.zip",
+    file_name=f"{(base_id or 'zurviv')}_zurviv_skin.zip",
     mime="application/zip",
 )
+st.download_button(
+    "⬇️ Sprites only (ZIP)",
+    data=sprites_only_zip_bytes,
+    file_name=f"{(base_id or 'zurviv')}_zurviv_sprites.zip",
+    mime="application/zip",
+)
+st.download_button(
+    "⬇️ TypeScript only",
+    data=ts_code.encode("utf-8"),
+    file_name=f"{ident}.ts",
+    mime="application/typescript",
+)
+st.download_button(
+    "⬇️ Asset manifest JSON",
+    data=manifest_json.encode("utf-8"),
+    file_name=f"{ident}.manifest.json",
+    mime="application/json",
+)
+st.download_button(
+    "⬇️ Preview only (HTML)",
+    data=preview_bytes,
+    file_name=f"{ident}-{preview_filename_base}.html",
+    mime="text/html",
+)
+
+st.markdown("#### Individual sprite downloads")
+sprite_cols = st.columns(2)
+for idx, (key, svg_text) in enumerate(sprite_exports):
+    name = filenames.get(key)
+    if not name:
+        continue
+    svg_name = name if name.endswith(".svg") else name.replace(".img", ".svg")
+    col = sprite_cols[idx % 2]
+    col.download_button(
+        f"⬇️ {sprite_button_labels.get(key, key.title())}",
+        data=svg_text,
+        file_name=svg_name,
+        mime="image/svg+xml",
+        key=f"download-{key}-svg",
+    )

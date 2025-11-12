@@ -59,6 +59,7 @@ class TestManifest(unittest.TestCase):
             sprite_mode=SPRITE_MODE_CUSTOM,
             preview_preset="Standing (default)",
             front_meta={"enabled": False, "pos_x": 0, "pos_y": 0, "aboveHand": False},
+            preview_options={"overlayEnabled": True, "overlayAboveFront": True},
         )
         data = json.loads(manifest_json)
 
@@ -69,6 +70,8 @@ class TestManifest(unittest.TestCase):
         self.assertEqual(data["sprites"]["referenceExtension"], ".img")
         self.assertIn("base", data["sprites"]["files"])
         self.assertEqual(data["preview"]["preset"], "Standing (default)")
+        self.assertTrue(data["preview"]["overlayEnabled"])
+        self.assertTrue(data["preview"]["overlayAboveFront"])
         self.assertEqual(data["tints"]["export"]["base"], "0xffffff")
         self.assertEqual(data["loot"]["borderEnabled"], True)
         self.assertIsNotNone(data["loot"]["borderSprite"])

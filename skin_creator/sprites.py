@@ -42,6 +42,7 @@ def svg_from_upload(
     fallback_width: int,
     fallback_height: int,
     rotation: float = 0.0,
+    scale: float = 1.0,
 ) -> str:
     """Wrap an uploaded sprite (SVG or bitmap) in an SVG container."""
 
@@ -50,8 +51,16 @@ def svg_from_upload(
     cx = fallback_width / 2
     cy = fallback_height / 2
     transform_attr = ""
-    if rotation:
-        transform_attr = f' transform="rotate({rotation:.2f},{cx:.2f},{cy:.2f})"'
+    transforms = []
+    if abs(rotation) > 1e-6 or abs(scale - 1.0) > 1e-6:
+        transforms.append(f"translate({cx:.2f},{cy:.2f})")
+        if abs(rotation) > 1e-6:
+            transforms.append(f"rotate({rotation:.2f})")
+        if abs(scale - 1.0) > 1e-6:
+            transforms.append(f"scale({scale:.4f})")
+        transforms.append(f"translate({-cx:.2f},{-cy:.2f})")
+    if transforms:
+        transform_attr = f' transform="{" ".join(transforms)}"'
     parts.append(
         f'<image href="{data_uri}" x="0" y="0" width="{fallback_width}" '
         f'height="{fallback_height}" preserveAspectRatio="xMidYMid meet"{transform_attr} />'

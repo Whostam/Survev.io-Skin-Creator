@@ -186,11 +186,14 @@ PREVIEW_PRESETS: Mapping[str, PreviewPreset] = OrderedDict(
 )
 
 
-def build_preview_html(
-    uris: Dict[str, str],
-    layout: PreviewLayout = PreviewLayout(),
+def _compute_preview_geometry(
+    layout: PreviewLayout,
     front: Optional[Dict[str, object]] = None,
-) -> str:
+) -> Dict[str, Dict[str, object]]:
+    """Return positional metadata for preview elements."""
+
+    front = front or {}
+
     body_frame = body_frame_from_layout(layout)
     body_width = body_frame.width
     body_height = body_frame.height
@@ -284,7 +287,7 @@ def build_preview_html(
     def _build_transform(parts: Optional[list[Optional[str]]]) -> str:
         filtered = [part for part in (parts or []) if part]
         if not filtered:
-            return "rotate(0deg)"
+            return ""
         return " ".join(filtered)
 
     body_transform = _build_transform([f"rotate({body_frame.rotation}deg)"])
@@ -297,61 +300,191 @@ def build_preview_html(
         ["scaleX(-1)" if layout.right_foot_mirror else None, f"rotate({layout.feet_rotation_right}deg)"]
     )
 
-    backpack_html = (
-        f'<img class="preview-backpack" src="{uris["backpack"]}" alt="Backpack" />'
-        if layout.show_backpack
-        else ""
-    )
-    body_html = f'<img class="preview-body" src="{uris["body"]}" alt="Body" />'
-    overlay_html = (
-        f'<img class="preview-overlay" src="{uris["overlay"]}" alt="Body overlay" />'
-        if layout.show_overlay
-        else ""
-    )
-    hand_left_html = f'<img class="preview-hand-left" src="{uris["hands"]}" alt="Left hand" />'
-    hand_right_html = f'<img class="preview-hand-right" src="{uris["hands"]}" alt="Right hand" />'
-    feet_left_html = (
-        f'<img class="preview-feet-left" src="{uris["feet"]}" alt="Left foot" />'
-        if layout.show_feet
-        else ""
-    )
-    feet_right_html = (
-        f'<img class="preview-feet-right" src="{uris["feet"]}" alt="Right foot" />'
-        if layout.show_feet
-        else ""
-    )
-
-    front = front or {}
     front_enabled = bool(front.get("enabled"))
-    front_above_hands = bool(front.get("above_hands"))
-    front_html = (
-        f'<img class="preview-front" src="{uris.get("front", "")}" alt="Accessory" />'
-        if front_enabled and uris.get("front")
-        else ""
+    front_defaults = dict(
+        left=body_left,
+        top=body_frame.top,
+        width=body_width,
+        height=body_height,
+        rotation=body_frame.rotation,
     )
+    front_geometry = {
+        key: int(float(front.get(key, default))) for key, default in front_defaults.items() if key != "rotation"
+    }
+    front_rotation = float(front.get("rotation", body_frame.rotation))
+    front_above_hands = bool(front.get("above_hands"))
+    overlay_above_front = bool(front.get("overlay_above_front", True))
+
+    geometry: Dict[str, Dict[str, object]] = {
+        "stage": {"width": layout.stage_width, "height": layout.stage_height},
+        "body": {
+            "left": body_left,
+            "top": body_frame.top,
+            "width": body_width,
+            "height": body_height,
+            "transform": body_transform,
+            "visible": True,
+            "z": 50,
+        },
+        "backpack": {
+            "left": backpack_left,
+            "top": layout.backpack_top,
+            "width": backpack_width,
+            "height": backpack_height,
+            "transform": "",
+            "visible": layout.show_backpack,
+            "z": 10,
+        },
+        "overlay": {
+            "left": overlay_left,
+            "top": overlay_top,
+            "width": overlay_width,
+            "height": overlay_height,
+            "transform": "",
+            "visible": layout.show_overlay,
+            "z": 65,
+        },
+        "hand_left": {
+            "left": hand_left,
+            "top": hand_left_top,
+            "width": hand_width,
+            "height": hand_height,
+            "transform": hand_left_transform,
+            "visible": True,
+            "z": 80 if layout.hands_above_body else 30,
+        },
+        "hand_right": {
+            "left": hand_right,
+            "top": hand_right_top,
+            "width": hand_width,
+            "height": hand_height,
+            "transform": hand_right_transform,
+            "visible": True,
+            "z": 80 if layout.hands_above_body else 30,
+        },
+        "feet_left": {
+            "left": feet_left,
+            "top": feet_left_top,
+            "width": feet_width,
+            "height": feet_height,
+            "transform": feet_left_transform,
+            "visible": layout.show_feet,
+            "z": 70 if layout.feet_above_body else 20,
+        },
+        "feet_right": {
+            "left": feet_right,
+            "top": feet_right_top,
+            "width": feet_width,
+            "height": feet_height,
+            "transform": feet_right_transform,
+            "visible": layout.show_feet,
+            "z": 70 if layout.feet_above_body else 20,
+        },
+        "front": {
+            "left": front_geometry.get("left", body_left),
+            "top": front_geometry.get("top", body_frame.top),
+            "width": front_geometry.get("width", body_width),
+            "height": front_geometry.get("height", body_height),
+            "transform": _build_transform([f"rotate({front_rotation}deg)"]),
+            "visible": front_enabled,
+            "z": 75 if front_above_hands else 55,
+        },
+    }
+
+    # Adjust layering so overlay can appear above or below the accessory as requested.
+    if geometry["overlay"]["visible"]:
+        if not front_enabled:
+            geometry["overlay"]["z"] = 65
+        else:
+            if overlay_above_front:
+                geometry["overlay"]["z"] = max(geometry["front"]["z"] + 5, geometry["overlay"]["z"])
+            else:
+                geometry["front"]["z"] = max(geometry["overlay"]["z"] + 5, geometry["front"]["z"])
+
+    if geometry["front"]["visible"] and front_above_hands:
+        geometry["front"]["z"] = max(geometry["front"]["z"], geometry["hand_left"]["z"] + 5)
+
+    geometry["front"]["above_hands"] = front_above_hands
+    geometry["front"]["overlay_above_front"] = overlay_above_front
+
+    return geometry
+
+
+def build_preview_html(
+    uris: Dict[str, str],
+    layout: PreviewLayout = PreviewLayout(),
+    front: Optional[Dict[str, object]] = None,
+) -> str:
+    geometry = _compute_preview_geometry(layout, front)
+
+    def _img_html(key: str, uri_key: str, alt: str) -> str:
+        item = geometry[key]
+        if not item.get("visible"):
+            return ""
+        transform = item.get("transform", "") or "rotate(0deg)"
+        return (
+            f'<img src="{uris[uri_key]}" alt="{alt}" '
+            f'style="position:absolute;left:{item["left"]}px;top:{item["top"]}px;'
+            f'width:{item["width"]}px;height:{item["height"]}px;'
+            f'transform:{transform};transform-origin:center;'
+            f'z-index:{item["z"]};image-rendering:optimizeQuality;" />'
+        )
+
+    backpack_html = _img_html("backpack", "backpack", "Backpack")
+    body_html = _img_html("body", "body", "Body")
+    overlay_html = _img_html("overlay", "overlay", "Body overlay")
+    front_html = _img_html("front", "front", "Accessory") if uris.get("front") else ""
+    hand_left_html = _img_html("hand_left", "hands", "Left hand")
+    hand_right_html = _img_html("hand_right", "hands", "Right hand")
+    feet_left_html = _img_html("feet_left", "feet", "Left foot")
+    feet_right_html = _img_html("feet_right", "feet", "Right foot")
+
+    front_enabled = bool(front_html)
+    front_above_hands = bool(geometry["front"].get("above_hands"))
+    overlay_above_front = bool(geometry["front"].get("overlay_above_front", True))
 
     stage_images = []
-    if layout.show_backpack:
+    if geometry["backpack"]["visible"]:
         stage_images.append(backpack_html)
-    if layout.show_overlay and not layout.overlay_above_body:
+    if geometry["overlay"]["visible"] and not layout.overlay_above_body:
         stage_images.append(overlay_html)
-    if layout.show_feet and not layout.feet_above_body:
+    if geometry["feet_left"]["visible"] and not layout.feet_above_body:
         stage_images.extend([feet_left_html, feet_right_html])
     if not layout.hands_above_body:
         stage_images.extend([hand_left_html, hand_right_html])
     stage_images.append(body_html)
-    if layout.show_overlay and layout.overlay_above_body:
+    if geometry["overlay"]["visible"] and layout.overlay_above_body:
+        if front_enabled and not front_above_hands and not overlay_above_front:
+            stage_images.append(front_html)
         stage_images.append(overlay_html)
-    if front_html and not front_above_hands:
+    if front_enabled and not front_above_hands:
         stage_images.append(front_html)
-    if layout.show_feet and layout.feet_above_body:
+    if geometry["feet_left"]["visible"] and layout.feet_above_body:
         stage_images.extend([feet_left_html, feet_right_html])
     if layout.hands_above_body:
         stage_images.extend([hand_left_html, hand_right_html])
-    if front_html and front_above_hands:
+    if geometry["overlay"]["visible"] and layout.overlay_above_body and front_enabled and front_above_hands and not overlay_above_front:
+        stage_images.append(overlay_html)
+    if front_enabled and front_above_hands:
         stage_images.append(front_html)
 
-    stage_images_html = "\n    ".join(stage_images)
+    stage_images_html = "\n    ".join(filter(None, stage_images))
+
+    figures = [
+        ("Body", uris["body"], 140, 140),
+        ("Backpack", uris["backpack"], 148, 148),
+        ("Hands", uris["hands"], 76, 76),
+        ("Feet", uris["feet"], 38, 38),
+    ]
+    if front_enabled and uris.get("front"):
+        figures.append(("Accessory", uris["front"], geometry["front"]["width"], geometry["front"]["height"]))
+    grid_cols = min(3, len(figures))
+    figure_html = "\n      ".join(
+        f'<figure style="margin:0;text-align:center;"><img src="{src}" width="{width}" height="{height}" '
+        f'alt="{label} sprite" style="image-rendering:optimizeQuality;" />'
+        f'<figcaption style="font-size:0.8rem;color:#666;margin-top:4px;">{label}</figcaption></figure>'
+        for label, src, width, height in figures
+    )
 
     return f"""
 <style>
@@ -362,10 +495,6 @@ def build_preview_html(
     flex: 0 0 auto;
     background: transparent;
     margin-right: 32px;
-  }}
-  .preview-stage img {{
-    position: absolute;
-    image-rendering: optimizeQuality;
   }}
   .loot-stage {{
     position: relative;
@@ -394,89 +523,14 @@ def build_preview_html(
     width: 128px;
     height: 128px;
   }}
-  .preview-backpack {{
-    left: {backpack_left}px;
-    top: {layout.backpack_top}px;
-    width: {backpack_width}px;
-    height: {backpack_height}px;
-  }}
-  .preview-body {{
-    left: {body_left}px;
-    top: {body_frame.top}px;
-    width: {body_width}px;
-    height: {body_height}px;
-    transform: {body_transform};
-    transform-origin: center;
-  }}
-  .preview-overlay {{
-    left: {overlay_left}px;
-    top: {overlay_top}px;
-    width: {overlay_width}px;
-    height: {overlay_height}px;
-  }}
-  .preview-front {{
-    left: {int(front.get("left", body_left))}px;
-    top: {int(front.get("top", body_frame.top))}px;
-    width: {int(front.get("width", body_width))}px;
-    height: {int(front.get("height", body_height))}px;
-    transform: rotate({float(front.get("rotation", body_frame.rotation))}deg);
-    transform-origin: center;
-  }}
-  .preview-hand-left {{
-    left: {hand_left}px;
-    top: {hand_left_top}px;
-    width: {hand_width}px;
-    height: {hand_height}px;
-    transform: {hand_left_transform};
-    transform-origin: center;
-  }}
-  .preview-hand-right {{
-    left: {hand_right}px;
-    top: {hand_right_top}px;
-    width: {hand_width}px;
-    height: {hand_height}px;
-    transform: {hand_right_transform};
-    transform-origin: center;
-  }}
-  .preview-feet-left {{
-    left: {feet_left}px;
-    top: {feet_left_top}px;
-    width: {feet_width}px;
-    height: {feet_height}px;
-    transform: {feet_left_transform};
-    transform-origin: center;
-  }}
-  .preview-feet-right {{
-    left: {feet_right}px;
-    top: {feet_right_top}px;
-    width: {feet_width}px;
-    height: {feet_height}px;
-    transform: {feet_right_transform};
-    transform-origin: center;
-  }}
 </style>
 <div style="display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start;justify-content:center;">
   <div class="preview-stage">
     {stage_images_html}
   </div>
   <div style="display:flex;flex-direction:column;gap:12px;flex:0 0 auto;align-items:center;">
-    <div style="display:grid;grid-template-columns:repeat(2,auto);gap:16px;justify-items:center;">
-      <figure style="margin:0;text-align:center;">
-        <img src="{uris['body']}" width="140" height="140" alt="Body sprite" style="image-rendering:optimizeQuality;" />
-        <figcaption style="font-size:0.8rem;color:#666;margin-top:4px;">Body</figcaption>
-      </figure>
-      <figure style="margin:0;text-align:center;">
-        <img src="{uris['backpack']}" width="148" height="148" alt="Backpack sprite" style="image-rendering:optimizeQuality;" />
-        <figcaption style="font-size:0.8rem;color:#666;margin-top:4px;">Backpack</figcaption>
-      </figure>
-      <figure style="margin:0;text-align:center;">
-        <img src="{uris['hands']}" width="76" height="76" alt="Hands sprite" style="image-rendering:optimizeQuality;" />
-        <figcaption style="font-size:0.8rem;color:#666;margin-top:4px;">Hands</figcaption>
-      </figure>
-      <figure style="margin:0;text-align:center;">
-        <img src="{uris['feet']}" width="38" height="38" alt="Feet sprite" style="image-rendering:optimizeQuality;" />
-        <figcaption style="font-size:0.8rem;color:#666;margin-top:4px;">Feet</figcaption>
-      </figure>
+    <div style="display:grid;grid-template-columns:repeat({grid_cols},auto);gap:16px;justify-items:center;">
+      {figure_html}
     </div>
     <figure style="margin:0;text-align:center;">
       <div class="loot-stage">
@@ -491,11 +545,30 @@ def build_preview_html(
 """
 
 
+def build_preview_document(
+    uris: Dict[str, str],
+    layout: PreviewLayout = PreviewLayout(),
+    front: Optional[Dict[str, object]] = None,
+) -> str:
+    """Wrap the preview HTML in a minimal standalone document for export."""
+
+    inner = build_preview_html(uris=uris, layout=layout, front=front)
+    return (
+        "<!DOCTYPE html>\n"
+        "<html lang=\"en\">\n"
+        "<head><meta charset=\"utf-8\" /><title>Zurviv.io Preview</title></head>\n"
+        "<body style=\"margin:24px;font-family:system-ui,sans-serif;background:#f5f5f5;\">"
+        f"{inner}"
+        "</body></html>"
+    )
+
+
 __all__ = [
     "PreviewLayout",
     "PreviewPreset",
     "BodyFrame",
     "PREVIEW_PRESETS",
+    "build_preview_document",
     "build_preview_html",
     "body_frame_from_layout",
 ]
