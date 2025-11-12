@@ -151,6 +151,45 @@ else:
     active_layout = selected_layout
 body_frame = body_frame_from_layout(active_layout)
 
+# Palette helpers
+
+
+def _random_hex() -> str:
+    return f"#{random.randint(0, 0xFFFFFF):06x}"
+
+
+def randomize_palette(prefix: str):
+    st.session_state[f"{prefix}-primary"] = _random_hex()
+    st.session_state[f"{prefix}-secondary"] = _random_hex()
+    st.session_state[f"{prefix}-extra"] = _random_hex()
+    st.session_state[f"{prefix}-style"] = random.choice(FILL_STYLES)
+    st.session_state[f"{prefix}-angle"] = random.randint(0, 180)
+    st.session_state[f"{prefix}-gap"] = random.randint(6, 48)
+    st.session_state[f"{prefix}-opacity"] = round(random.uniform(0.2, 1.0), 2)
+    st.session_state[f"{prefix}-size"] = random.randint(4, 40)
+    st.session_state[f"{prefix}-tint"] = _random_hex()
+
+
+def reset_palettes_to_defaults():
+    for prefix, defaults in (
+        ("body", BODY_DEFAULTS),
+        ("hands", HAND_DEFAULTS),
+        ("backpack", BACKPACK_DEFAULTS),
+    ):
+        for field, value in defaults.items():
+            st.session_state[f"{prefix}-{field}"] = value
+    st.session_state["loot-shirt-tint"] = LOOT_DEFAULTS["shirt"]
+    st.session_state["loot-border-tint"] = LOOT_DEFAULTS["border"]
+    st.session_state["loot-inner-tint"] = LOOT_DEFAULTS["inner"]
+
+
+def randomize_all_palettes():
+    for prefix in ("body", "hands", "backpack"):
+        randomize_palette(prefix)
+    st.session_state["loot-shirt-tint"] = _random_hex()
+    st.session_state["loot-border-tint"] = _random_hex()
+    st.session_state["loot-inner-tint"] = _random_hex()
+
 if st.sidebar.button("🎲 Randomize colors & patterns", key="randomize-palettes"):
     randomize_all_palettes()
 
@@ -395,45 +434,6 @@ def part_controls(
         upload_scale=upload_scale,
     )
 
-
-# BaseDefs defaults
-
-
-def _random_hex() -> str:
-    return f"#{random.randint(0, 0xFFFFFF):06x}"
-
-
-def randomize_palette(prefix: str):
-    st.session_state[f"{prefix}-primary"] = _random_hex()
-    st.session_state[f"{prefix}-secondary"] = _random_hex()
-    st.session_state[f"{prefix}-extra"] = _random_hex()
-    st.session_state[f"{prefix}-style"] = random.choice(FILL_STYLES)
-    st.session_state[f"{prefix}-angle"] = random.randint(0, 180)
-    st.session_state[f"{prefix}-gap"] = random.randint(6, 48)
-    st.session_state[f"{prefix}-opacity"] = round(random.uniform(0.2, 1.0), 2)
-    st.session_state[f"{prefix}-size"] = random.randint(4, 40)
-    st.session_state[f"{prefix}-tint"] = _random_hex()
-
-
-def reset_palettes_to_defaults():
-    for prefix, defaults in (
-        ("body", BODY_DEFAULTS),
-        ("hands", HAND_DEFAULTS),
-        ("backpack", BACKPACK_DEFAULTS),
-    ):
-        for field, value in defaults.items():
-            st.session_state[f"{prefix}-{field}"] = value
-    st.session_state["loot-shirt-tint"] = LOOT_DEFAULTS["shirt"]
-    st.session_state["loot-border-tint"] = LOOT_DEFAULTS["border"]
-    st.session_state["loot-inner-tint"] = LOOT_DEFAULTS["inner"]
-
-
-def randomize_all_palettes():
-    for prefix in ("body", "hands", "backpack"):
-        randomize_palette(prefix)
-    st.session_state["loot-shirt-tint"] = _random_hex()
-    st.session_state["loot-border-tint"] = _random_hex()
-    st.session_state["loot-inner-tint"] = _random_hex()
 
 body_cfg = part_controls(
     "Body",
