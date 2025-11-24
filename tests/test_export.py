@@ -60,6 +60,8 @@ class TestManifest(unittest.TestCase):
             preview_preset="Standing (default)",
             front_meta={"enabled": False, "pos_x": 0, "pos_y": 0, "aboveHand": False},
             preview_options={"overlayEnabled": True, "overlayAboveFront": True},
+            export_format="svg",
+            export_files={key: f"exported-{val}" for key, val in self.filenames.items()},
         )
         data = json.loads(manifest_json)
 
@@ -68,7 +70,9 @@ class TestManifest(unittest.TestCase):
         self.assertTrue(data["skin"]["flags"]["noDrop"])
         self.assertEqual(data["sprites"]["mode"], SPRITE_MODE_CUSTOM)
         self.assertEqual(data["sprites"]["referenceExtension"], ".img")
+        self.assertEqual(data["sprites"]["exportFormat"], "svg")
         self.assertIn("base", data["sprites"]["files"])
+        self.assertIn("base", data["sprites"]["exportFiles"])
         self.assertEqual(data["preview"]["preset"], "Standing (default)")
         self.assertTrue(data["preview"]["overlayEnabled"])
         self.assertTrue(data["preview"]["overlayAboveFront"])

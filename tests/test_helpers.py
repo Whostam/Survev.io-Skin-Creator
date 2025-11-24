@@ -44,5 +44,20 @@ class TestFilenameHelpers(unittest.TestCase):
         )
 
 
+class TestExportHelpers(unittest.TestCase):
+    def test_filename_for_export_png(self):
+        self.assertEqual(
+            helpers.filename_for_export("player-base.img", "PNG"),
+            "player-base.png",
+        )
+
+    @unittest.skipUnless(helpers.HAS_CAIROSVG, "CairoSVG required for PNG export")
+    def test_sprite_bytes_png_mime(self):
+        svg = "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"10\" height=\"10\"/></svg>"
+        data, mime = helpers.sprite_bytes(svg, "PNG")
+        self.assertEqual(mime, "image/png")
+        self.assertTrue(data.startswith(b"\x89PNG"))
+
+
 if __name__ == "__main__":
     unittest.main()

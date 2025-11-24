@@ -15,7 +15,15 @@ from skin_creator.export import (
     build_filenames,
     build_manifest,
 )
-from skin_creator.helpers import hex_to_rgb, rgb_to_ts_hex, sanitize, svg_data_uri
+from skin_creator.helpers import (
+    filename_for_export,
+    HAS_CAIROSVG,
+    hex_to_rgb,
+    rgb_to_ts_hex,
+    sanitize,
+    sprite_bytes,
+    svg_data_uri,
+)
 from skin_creator.preview import (
     PREVIEW_PRESETS,
     body_frame_from_layout,
@@ -213,6 +221,22 @@ bp_outline_style = st.sidebar.selectbox(
     index=0,
     key="bp-outline-style",
 )
+bp_glow_color = None
+bp_glow_size = None
+if bp_outline_style == "Glow":
+    bp_glow_color = st.sidebar.color_picker(
+        "Backpack glow color",
+        bp_stroke_col,
+        key="bp-glow-color",
+    )
+    bp_glow_size = st.sidebar.slider(
+        "Backpack glow thickness",
+        min_value=2.0,
+        max_value=40.0,
+        value=14.0,
+        step=0.5,
+        key="bp-glow-size",
+    )
 bp_stroke_w = st.sidebar.slider(
     "Backpack outline width",
     min_value=6.0,
@@ -229,6 +253,22 @@ hand_outline_style = st.sidebar.selectbox(
     index=0,
     key="hands-outline-style",
 )
+hand_glow_color = None
+hand_glow_size = None
+if hand_outline_style == "Glow":
+    hand_glow_color = st.sidebar.color_picker(
+        "Hands glow color",
+        hand_stroke_col,
+        key="hands-glow-color",
+    )
+    hand_glow_size = st.sidebar.slider(
+        "Hands glow thickness",
+        min_value=2.0,
+        max_value=40.0,
+        value=12.0,
+        step=0.5,
+        key="hands-glow-size",
+    )
 hand_stroke_w = st.sidebar.slider(
     "Hands outline width",
     min_value=6.0,
@@ -239,9 +279,24 @@ hand_stroke_w = st.sidebar.slider(
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Asset Reference")
-ref_ext = st.sidebar.selectbox("Reference extension used in TS", [".img", ".svg"], index=0)
+sprite_export_format = st.sidebar.selectbox(
+    "Sprite export format",
+    ["SVG", "PNG"],
+    index=0,
+    help="Choose how generated sprites are downloaded (affects all exports).",
+)
+if sprite_export_format == "PNG" and not HAS_CAIROSVG:
+    st.sidebar.warning(
+        "PNG export requires CairoSVG; falling back to SVG until the dependency is installed."
+    )
+    sprite_export_format = "SVG"
+ref_ext = st.sidebar.selectbox(
+    "Reference extension used in TS",
+    [".img", ".svg", ".png"],
+    index=1 if sprite_export_format == "PNG" else 0,
+)
 st.sidebar.caption(
-    "ZIP always contains SVG files; choose how your TS should reference them in-game."
+    "Exports honor your chosen sprite format; pick the reference extension so TS matches your files."
 )
 
 sprite_mode = st.sidebar.radio(
@@ -647,7 +702,13 @@ if hand_cfg.get("upload_active") and hand_cfg.get("upload_bytes"):
     )
 else:
     hands_svg_text = build_part_svg(
-        hand_cfg, svg_hands, hand_stroke_col, hand_stroke_w, hand_outline_style
+        hand_cfg,
+        svg_hands,
+        hand_stroke_col,
+        hand_stroke_w,
+        hand_outline_style,
+        glow_color=hand_glow_color,
+        glow_size=hand_glow_size,
     )
 
 if bp_cfg.get("upload_active") and bp_cfg.get("upload_bytes"):
@@ -660,10 +721,24 @@ if bp_cfg.get("upload_active") and bp_cfg.get("upload_bytes"):
     )
 else:
     backpack_svg_text = build_part_svg(
-        bp_cfg, svg_backpack, bp_stroke_col, bp_stroke_w, bp_outline_style
+        bp_cfg,
+        svg_backpack,
+        bp_stroke_col,
+        bp_stroke_w,
+        bp_outline_style,
+        glow_color=bp_glow_color,
+        glow_size=bp_glow_size,
     )
 
-feet_svg_text = build_part_svg(hand_cfg, svg_feet, hand_stroke_col, feet_stroke_w)
+feet_svg_text = build_part_svg(
+    hand_cfg,
+    svg_feet,
+    hand_stroke_col,
+    feet_stroke_w,
+    hand_outline_style,
+    glow_color=hand_glow_color,
+    glow_size=hand_glow_size,
+)
 loot_svg_text = svg_loot_shirt_base(loot_icon_tint)
 loot_inner_svg_text = svg_loot_circle_inner(loot_inner_glow)
 loot_outer_svg_text = svg_loot_circle_outer(loot_border_tint)
@@ -715,7 +790,7 @@ st.markdown("---")
 # ---------------------------
 
 ident = f"outfit{sanitize(skin_name)}"
-ext_ref = "img" if ref_ext == ".img" else "svg"
+ext_ref = {".img": "img", ".svg": "svg", ".png": "png"}.get(ref_ext, "svg")
 
 filenames = build_filenames(
     base_id=base_id,
@@ -779,6 +854,11 @@ preview_options = {
     "overlayEnabled": bool(active_layout.show_overlay),
     "overlayAboveFront": overlay_above_front,
 }
+export_filenames = {
+    key: filename_for_export(name, sprite_export_format)
+    for key, name in filenames.items()
+    if name
+}
 manifest_json = build_manifest(
     ident=ident,
     opts=opts,
@@ -789,6 +869,8 @@ manifest_json = build_manifest(
     preview_preset=selected_preview_label,
     front_meta=front_meta,
     preview_options=preview_options,
+    export_format=sprite_export_format,
+    export_files=export_filenames,
 )
 preview_document_html = build_preview_document(
     uris, layout=active_layout, front=front_preview
@@ -842,12 +924,12 @@ with left:
 with right:
     st.subheader("What’s inside the ZIP")
     zip_lines = []
-    for key, _ in sprite_exports:
-        name = filenames.get(key)
-        if not name:
-            continue
-        label = sprite_labels.get(key, key)
-        zip_lines.append(f"- `{name}` ({label})")
+for key, _ in sprite_exports:
+    name = export_filenames.get(key) or filenames.get(key)
+    if not name:
+        continue
+    label = sprite_labels.get(key, key)
+    zip_lines.append(f"- `{name}` ({label})")
     zip_lines.append(
         f"- `preview/{preview_filename_base}.html` (preview snapshot for {selected_preview_label})"
     )
@@ -862,11 +944,11 @@ with right:
 buf = io.BytesIO()
 with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
     for key, svg_text in sprite_exports:
-        name = filenames.get(key)
+        name = export_filenames.get(key) or filenames.get(key)
         if not name:
             continue
-        zip_name = name if name.endswith(".svg") else name.replace(".img", ".svg")
-        zf.writestr(zip_name, svg_text)
+        payload, _mime = sprite_bytes(svg_text, sprite_export_format)
+        zf.writestr(name, payload)
     zf.writestr(f"export/{ident}.ts", ts_code)
     zf.writestr(f"export/{ident}.manifest.json", manifest_json)
     zf.writestr(f"preview/{preview_filename_base}.html", preview_document_html)
@@ -875,11 +957,11 @@ zip_bytes = buf.getvalue()
 sprites_only_buf = io.BytesIO()
 with zipfile.ZipFile(sprites_only_buf, "w", zipfile.ZIP_DEFLATED) as zf:
     for key, svg_text in sprite_exports:
-        name = filenames.get(key)
+        name = export_filenames.get(key) or filenames.get(key)
         if not name:
             continue
-        zip_name = name if name.endswith(".svg") else name.replace(".img", ".svg")
-        zf.writestr(zip_name, svg_text)
+        payload, _mime = sprite_bytes(svg_text, sprite_export_format)
+        zf.writestr(name, payload)
 sprites_only_zip_bytes = sprites_only_buf.getvalue()
 
 st.download_button(
@@ -916,15 +998,15 @@ st.download_button(
 st.markdown("#### Individual sprite downloads")
 sprite_cols = st.columns(2)
 for idx, (key, svg_text) in enumerate(sprite_exports):
-    name = filenames.get(key)
+    name = export_filenames.get(key) or filenames.get(key)
     if not name:
         continue
-    svg_name = name if name.endswith(".svg") else name.replace(".img", ".svg")
+    payload, mime = sprite_bytes(svg_text, sprite_export_format)
     col = sprite_cols[idx % 2]
     col.download_button(
         f"⬇️ {sprite_button_labels.get(key, key.title())}",
-        data=svg_text,
-        file_name=svg_name,
-        mime="image/svg+xml",
-        key=f"download-{key}-svg",
+        data=payload,
+        file_name=name,
+        mime=mime,
+        key=f"download-{key}-sprite",
     )

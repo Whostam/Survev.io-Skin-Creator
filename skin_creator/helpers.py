@@ -7,6 +7,14 @@ import re
 import urllib.parse
 from typing import Optional, Tuple
 
+try:
+    import cairosvg  # type: ignore
+
+    HAS_CAIROSVG = True
+except Exception:  # pragma: no cover - optional dependency
+    cairosvg = None
+    HAS_CAIROSVG = False
+
 
 def sanitize(name: str) -> str:
     """Return a filesystem-safe identifier for export assets."""
@@ -69,6 +77,25 @@ def outline(stroke: Optional[str] = "#000000", width: Optional[float] = 8) -> st
     return f'stroke="{stroke}" stroke-width="{width}"'
 
 
+def filename_for_export(name: str, export_format: str = "SVG") -> str:
+    """Return a filename adjusted to the chosen export format."""
+
+    ext = "png" if (export_format or "svg").lower() == "png" else "svg"
+    return ensure_extension(name, ext)
+
+
+def sprite_bytes(svg_text: str, export_format: str = "SVG") -> Tuple[bytes, str]:
+    """Convert an SVG string to the requested export bytes + mime type."""
+
+    fmt = (export_format or "svg").lower()
+    if fmt == "png":
+        if not HAS_CAIROSVG:
+            raise RuntimeError("PNG export requires CairoSVG to be installed.")
+        data = cairosvg.svg2png(bytestring=svg_text.encode("utf-8"))
+        return data, "image/png"
+    return svg_text.encode("utf-8"), "image/svg+xml"
+
+
 def clamp_byte(value: float) -> int:
     """Clamp a floating-point channel to the 0-255 byte range."""
     return max(0, min(255, int(round(value))))
@@ -114,11 +141,14 @@ __all__ = [
     "darken",
     "ensure_extension",
     "ensure_utf8",
+    "HAS_CAIROSVG",
+    "filename_for_export",
     "hex_to_rgb",
     "lighten",
     "outline",
     "rgb_to_ts_hex",
     "sanitize",
+    "sprite_bytes",
     "svg_data_uri",
     "svg_footer",
     "svg_header",
