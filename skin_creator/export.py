@@ -172,15 +172,10 @@ def build_manifest(
     preview_preset: str,
     front_meta: Optional[Dict[str, object]] = None,
     preview_options: Optional[Dict[str, object]] = None,
-    export_format: str = "svg",
-    export_files: Optional[Mapping[str, str]] = None,
 ) -> str:
     """Return a JSON manifest describing exported assets."""
 
     sprite_files = {key: value for key, value in filenames.items() if value}
-    exported_files = {
-        key: value for key, value in (export_files or {}).items() if value
-    }
 
     front_meta = front_meta or {}
 
@@ -206,9 +201,7 @@ def build_manifest(
         "sprites": {
             "mode": sprite_mode,
             "referenceExtension": opts.ref_ext,
-            "exportFormat": export_format.lower(),
             "files": sprite_files,
-            "exportFiles": exported_files,
         },
         "tints": {
             "ui": dict(ui_tints),

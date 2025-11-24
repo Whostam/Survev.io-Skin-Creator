@@ -20,8 +20,6 @@ def outline_style_parts(
     stroke_col: Optional[str],
     stroke_w: Optional[float],
     prefix: str,
-    glow_color: Optional[str] = None,
-    glow_size: Optional[float] = None,
 ):
     """Return defs/attributes/outer stroke markup for styled outlines."""
 
@@ -34,25 +32,14 @@ def outline_style_parts(
     outer = None
 
     if normalized == "glow":
-        glow_col = glow_color or stroke_col
-        glow_extra = glow_size if glow_size is not None else stroke_w * 1.25
-        blur = max(glow_extra, stroke_w) * 0.6
+        blur = stroke_w / 2
         defs = (
-            f'<defs><filter id="{prefix}-glow" x="-80%" y="-80%" width="260%" height="260%">'
-            f'<feGaussianBlur in="SourceAlpha" stdDeviation="{blur:.2f}" result="blur" />'
-            f"<feFlood flood-color=\"{glow_col}\" result=\"flood\"/>"
-            f"<feComposite in=\"flood\" in2=\"blur\" operator=\"in\" result=\"coloredBlur\"/>"
-            f"<feMerge><feMergeNode in=\"coloredBlur\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>"
+            f'<defs><filter id="{prefix}-glow" x="-50%" y="-50%" width="200%" height="200%">'
+            f'<feGaussianBlur stdDeviation="{blur:.2f}" result="blur" />'
+            f"<feMerge><feMergeNode in=\"blur\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>"
             f"</filter></defs>"
         )
-        attrs = (
-            f'stroke="{stroke_col}" stroke-width="{stroke_w}" '
-            f'stroke-linejoin="round" stroke-linecap="round" filter="url(#{prefix}-glow)"'
-        )
-        outer = (
-            f'stroke="{glow_col}" stroke-width="{stroke_w + glow_extra}" '
-            f'stroke-linejoin="round" stroke-linecap="round" filter="url(#{prefix}-glow)"'
-        )
+        attrs = f'stroke="{stroke_col}" stroke-width="{stroke_w}" filter="url(#{prefix}-glow)"'
     elif normalized == "gradient":
         grad_id = f"{prefix}-stroke-grad"
         defs = (
@@ -80,24 +67,10 @@ PartConfig = Dict[str, object]
 
 def build_part_svg(
     cfg: PartConfig,
-    make_svg: Callable[
-        [
-            str,
-            str,
-            PartConfig,
-            Optional[str],
-            Optional[float],
-            str,
-            Optional[str],
-            Optional[float],
-        ],
-        str,
-    ],
+    make_svg: Callable[[str, str, PartConfig, Optional[str], Optional[float], str], str],
     stroke_col: Optional[str] = None,
     stroke_w: Optional[float] = None,
     outline_style: str = "Solid",
-    glow_color: Optional[str] = None,
-    glow_size: Optional[float] = None,
 ) -> str:
     defs, fill_ref = build_fill(
         cfg["style"],
@@ -109,16 +82,7 @@ def build_part_svg(
         cfg["opacity"],
         cfg["size"],
     )
-    return make_svg(
-        defs,
-        fill_ref,
-        cfg,
-        stroke_col,
-        stroke_w,
-        outline_style,
-        glow_color,
-        glow_size,
-    )
+    return make_svg(defs, fill_ref, cfg, stroke_col, stroke_w, outline_style)
 
 
 def svg_from_upload(
@@ -161,18 +125,11 @@ def svg_backpack(
     stroke_col: str = "#333333",
     stroke_w: float = 11.014,
     outline_style: str = "Solid",
-    glow_color: Optional[str] = None,
-    glow_size: Optional[float] = None,
 ) -> str:
     width = height = 148
     parts = [svg_header(width, height)]
     defs, stroke_attrs, outer = outline_style_parts(
-        outline_style,
-        stroke_col,
-        stroke_w,
-        prefix="backpack",
-        glow_color=glow_color,
-        glow_size=glow_size,
+        outline_style, stroke_col, stroke_w, prefix="backpack"
     )
     if fill_defs:
         parts.append(fill_defs)
@@ -198,8 +155,6 @@ def svg_body(
     stroke_col: str = "#000",
     stroke_w: float = 8,
     outline_style: str = "Solid",
-    glow_color: Optional[str] = None,
-    glow_size: Optional[float] = None,
 ) -> str:
     width = height = 140
     parts = [svg_header(width, height)]
@@ -217,18 +172,11 @@ def svg_hands(
     stroke_col: str = "#333333",
     stroke_w: float = 11.096,
     outline_style: str = "Solid",
-    glow_color: Optional[str] = None,
-    glow_size: Optional[float] = None,
 ) -> str:
     width = height = 76
     parts = [svg_header(width, height)]
     defs, stroke_attrs, outer = outline_style_parts(
-        outline_style,
-        stroke_col,
-        stroke_w,
-        prefix="hands",
-        glow_color=glow_color,
-        glow_size=glow_size,
+        outline_style, stroke_col, stroke_w, prefix="hands"
     )
     if fill_defs:
         parts.append(fill_defs)
@@ -309,18 +257,11 @@ def svg_feet(
     stroke_col: str = "#333333",
     stroke_w: float = 4.513,
     outline_style: str = "Solid",
-    glow_color: Optional[str] = None,
-    glow_size: Optional[float] = None,
 ) -> str:
     width = height = 38
     parts = [svg_header(width, height)]
     defs, stroke_attrs, outer = outline_style_parts(
-        outline_style,
-        stroke_col,
-        stroke_w,
-        prefix="feet",
-        glow_color=glow_color,
-        glow_size=glow_size,
+        outline_style, stroke_col, stroke_w, prefix="feet"
     )
     if fill_defs:
         parts.append(fill_defs)

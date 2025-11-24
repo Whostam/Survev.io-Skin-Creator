@@ -8,8 +8,7 @@ Build and preview custom Zurviv.io outfits with a Streamlit-powered editor. The 
 - **Randomizer** to shuffle body/backpack/hand palettes and fill patterns without disturbing outlines or gameplay flags.
 - **Sprite uploads & transforms** for body, hands, backpack, and front accessories, including rotation and body scaling for quick alignment.
 - **Accessory workflow** that supports uploadable front sprites, placement offsets, optional above-hand rendering, and manifest metadata.
-- **Styled outlines** for backpacks/hands including glow, gradients, dashed, and double strokes with separate glow colors and thickness controls.
-- **Flexible exports**: Zurviv-style TypeScript snippet, JSON asset manifest, preview HTML snapshot, per-sprite SVG/PNG outputs, and combined ZIP bundles.
+- **Flexible exports**: Zurviv-style TypeScript snippet, JSON asset manifest, preview HTML snapshot, per-sprite SVGs, and combined ZIP bundles.
 - **Automated tests** covering color math, filename helpers, manifest generation, and preview layout calculations.
 
 ## Project layout
@@ -28,11 +27,9 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-PNG exports use [CairoSVG](https://cairosvg.org/); if it is unavailable the app will continue to export SVGs.
-
 ## What the app exports
 
-- Individual sprites (SVG or PNG) for body, hands, feet, backpack, loot circles, loot icon, and optional accessory.
+- Individual SVG sprites for body, hands, feet, backpack, loot circles, loot icon, and optional accessory.
 - Zurviv-flavored TypeScript snippet (`export/{ident}.ts`) ready for `defineOutfitSkin("outfitBase", …)`.
 - Asset manifest (`export/{ident}.manifest.json`) capturing filenames, tint values, preview options, and accessory metadata.
 - Preview HTML snapshot (`preview/<preset>.html`) that mirrors the layered stage with current colors and uploaded art.

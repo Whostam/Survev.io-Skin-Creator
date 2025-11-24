@@ -14,18 +14,9 @@ def base_cfg():
     )
 
 
-def test_glow_outline_supports_custom_color_and_thickness():
-    svg = build_part_svg(
-        base_cfg(),
-        svg_backpack,
-        "#5522aa",
-        10,
-        "Glow",
-        glow_color="#ff2200",
-        glow_size=18,
-    )
+def test_glow_outline_adds_filter():
+    svg = build_part_svg(base_cfg(), svg_backpack, "#5522aa", 10, "Glow")
     assert "backpack-glow" in svg
-    assert "flood-color=\"#ff2200\"" in svg
     assert "filter=\"url(#backpack-glow)\"" in svg
 
 
