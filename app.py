@@ -197,8 +197,22 @@ if st.sidebar.button("↩️ Reset to basic outfit", key="reset-palettes"):
     reset_palettes_to_defaults()
 
 st.sidebar.markdown("---")
+OUTLINE_STYLES = [
+    "Solid",
+    "Glow",
+    "Gradient",
+    "Dashed",
+    "Double Stroke",
+]
+
 st.sidebar.subheader("Backpack Outline")
 bp_stroke_col = st.sidebar.color_picker("Backpack outline color", "#333333")
+bp_outline_style = st.sidebar.selectbox(
+    "Backpack outline style",
+    OUTLINE_STYLES,
+    index=0,
+    key="bp-outline-style",
+)
 bp_stroke_w = st.sidebar.slider(
     "Backpack outline width",
     min_value=6.0,
@@ -209,6 +223,12 @@ bp_stroke_w = st.sidebar.slider(
 
 st.sidebar.subheader("Hands Outline")
 hand_stroke_col = st.sidebar.color_picker("Hands outline color", "#333333")
+hand_outline_style = st.sidebar.selectbox(
+    "Hands outline style",
+    OUTLINE_STYLES,
+    index=0,
+    key="hands-outline-style",
+)
 hand_stroke_w = st.sidebar.slider(
     "Hands outline width",
     min_value=6.0,
@@ -626,7 +646,9 @@ if hand_cfg.get("upload_active") and hand_cfg.get("upload_bytes"):
         float(hand_cfg.get("upload_rotation", 0.0)),
     )
 else:
-    hands_svg_text = build_part_svg(hand_cfg, svg_hands, hand_stroke_col, hand_stroke_w)
+    hands_svg_text = build_part_svg(
+        hand_cfg, svg_hands, hand_stroke_col, hand_stroke_w, hand_outline_style
+    )
 
 if bp_cfg.get("upload_active") and bp_cfg.get("upload_bytes"):
     backpack_svg_text = svg_from_upload(
@@ -637,7 +659,9 @@ if bp_cfg.get("upload_active") and bp_cfg.get("upload_bytes"):
         float(bp_cfg.get("upload_rotation", 0.0)),
     )
 else:
-    backpack_svg_text = build_part_svg(bp_cfg, svg_backpack, bp_stroke_col, bp_stroke_w)
+    backpack_svg_text = build_part_svg(
+        bp_cfg, svg_backpack, bp_stroke_col, bp_stroke_w, bp_outline_style
+    )
 
 feet_svg_text = build_part_svg(hand_cfg, svg_feet, hand_stroke_col, feet_stroke_w)
 loot_svg_text = svg_loot_shirt_base(loot_icon_tint)
