@@ -20,26 +20,35 @@ def outline_style_parts(
     stroke_col: Optional[str],
     stroke_w: Optional[float],
     prefix: str,
+    glow_color: Optional[str] = None,
+    glow_width: Optional[float] = None,
 ):
     """Return defs/attributes/outer stroke markup for styled outlines."""
 
     if stroke_col is None or stroke_w is None:
-        return "", "", None
+        return "", "", None, False
 
     normalized = (style or "Solid").lower()
     defs = ""
     attrs = outline(stroke_col, stroke_w)
     outer = None
+    stroke_only = False
 
     if normalized == "glow":
-        blur = stroke_w / 2
+        blur_width = glow_width or stroke_w
+        blur = (blur_width or 0) / 2
+        color = glow_color or stroke_col
         defs = (
-            f'<defs><filter id="{prefix}-glow" x="-50%" y="-50%" width="200%" height="200%">'
-            f'<feGaussianBlur stdDeviation="{blur:.2f}" result="blur" />'
-            f"<feMerge><feMergeNode in=\"blur\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>"
+            f'<defs><filter id="{prefix}-glow" x="-200%" y="-200%" width="500%" height="500%" '
+            f'filterUnits="objectBoundingBox" color-interpolation-filters="sRGB">'
+            f'<feGaussianBlur in="SourceGraphic" stdDeviation="{blur:.2f}" result="glow-blur" />'
+            f'<feFlood flood-color="{color}" result="glow-color" />'
+            '<feComposite in="glow-color" in2="glow-blur" operator="in" result="colored-glow" />'
+            f"<feMerge><feMergeNode in=\"colored-glow\"/><feMergeNode in=\"SourceGraphic\"/></feMerge>"
             f"</filter></defs>"
         )
         attrs = f'stroke="{stroke_col}" stroke-width="{stroke_w}" filter="url(#{prefix}-glow)"'
+        stroke_only = True
     elif normalized == "gradient":
         grad_id = f"{prefix}-stroke-grad"
         defs = (
@@ -60,17 +69,31 @@ def outline_style_parts(
         outer = outline(darken(stroke_col, 0.25), stroke_w * 1.6)
         attrs = outline(stroke_col, stroke_w)
 
-    return defs, attrs, outer
+    return defs, attrs, outer, stroke_only
 
 PartConfig = Dict[str, object]
 
 
 def build_part_svg(
     cfg: PartConfig,
-    make_svg: Callable[[str, str, PartConfig, Optional[str], Optional[float], str], str],
+    make_svg: Callable[
+        [
+            str,
+            str,
+            PartConfig,
+            Optional[str],
+            Optional[float],
+            str,
+            Optional[str],
+            Optional[float],
+        ],
+        str,
+    ],
     stroke_col: Optional[str] = None,
     stroke_w: Optional[float] = None,
     outline_style: str = "Solid",
+    glow_color: Optional[str] = None,
+    glow_width: Optional[float] = None,
 ) -> str:
     defs, fill_ref = build_fill(
         cfg["style"],
@@ -82,7 +105,16 @@ def build_part_svg(
         cfg["opacity"],
         cfg["size"],
     )
-    return make_svg(defs, fill_ref, cfg, stroke_col, stroke_w, outline_style)
+    return make_svg(
+        defs,
+        fill_ref,
+        cfg,
+        stroke_col,
+        stroke_w,
+        outline_style,
+        glow_color,
+        glow_width,
+    )
 
 
 def svg_from_upload(
@@ -125,11 +157,18 @@ def svg_backpack(
     stroke_col: str = "#333333",
     stroke_w: float = 11.014,
     outline_style: str = "Solid",
+    glow_color: Optional[str] = None,
+    glow_width: Optional[float] = None,
 ) -> str:
     width = height = 148
     parts = [svg_header(width, height)]
-    defs, stroke_attrs, outer = outline_style_parts(
-        outline_style, stroke_col, stroke_w, prefix="backpack"
+    defs, stroke_attrs, outer, stroke_only = outline_style_parts(
+        outline_style,
+        stroke_col,
+        stroke_w,
+        prefix="backpack",
+        glow_color=glow_color,
+        glow_width=glow_width,
     )
     if fill_defs:
         parts.append(fill_defs)
@@ -140,10 +179,17 @@ def svg_backpack(
             f'<ellipse cx="74" cy="74" rx="66.5" ry="66.5" fill="none" {outer} />'
         )
     stroke_attr_block = stroke_attrs or outline(stroke_col, stroke_w)
-    parts.append(
-        f'<ellipse cx="74" cy="74" rx="66.5" ry="66.5" fill="{fill_ref}" '
-        f"{stroke_attr_block} />"
-    )
+    if stroke_only:
+        parts.append(f'<ellipse cx="74" cy="74" rx="66.5" ry="66.5" fill="{fill_ref}" />')
+        parts.append(
+            f'<ellipse cx="74" cy="74" rx="66.5" ry="66.5" fill="none" '
+            f"{stroke_attr_block} />"
+        )
+    else:
+        parts.append(
+            f'<ellipse cx="74" cy="74" rx="66.5" ry="66.5" fill="{fill_ref}" '
+            f"{stroke_attr_block} />"
+        )
     parts.append(svg_footer())
     return "\n".join(parts)
 
@@ -155,6 +201,8 @@ def svg_body(
     stroke_col: str = "#000",
     stroke_w: float = 8,
     outline_style: str = "Solid",
+    glow_color: Optional[str] = None,
+    glow_width: Optional[float] = None,
 ) -> str:
     width = height = 140
     parts = [svg_header(width, height)]
@@ -172,11 +220,18 @@ def svg_hands(
     stroke_col: str = "#333333",
     stroke_w: float = 11.096,
     outline_style: str = "Solid",
+    glow_color: Optional[str] = None,
+    glow_width: Optional[float] = None,
 ) -> str:
     width = height = 76
     parts = [svg_header(width, height)]
-    defs, stroke_attrs, outer = outline_style_parts(
-        outline_style, stroke_col, stroke_w, prefix="hands"
+    defs, stroke_attrs, outer, stroke_only = outline_style_parts(
+        outline_style,
+        stroke_col,
+        stroke_w,
+        prefix="hands",
+        glow_color=glow_color,
+        glow_width=glow_width,
     )
     if fill_defs:
         parts.append(fill_defs)
@@ -198,10 +253,20 @@ def svg_hands(
                 f'<rect x="{x:.2f}" y="{y:.2f}" width="{size:.2f}" height="{size:.2f}" '
                 f'rx="{radius:.2f}" ry="{radius:.2f}" fill="none" {outer} />'
             )
-        parts.append(
-            f'<rect x="{x:.2f}" y="{y:.2f}" width="{size:.2f}" height="{size:.2f}" '
-            f'rx="{radius:.2f}" ry="{radius:.2f}" fill="{fill_ref}" {stroke_attr_block} />'
-        )
+        if stroke_only:
+            parts.append(
+                f'<rect x="{x:.2f}" y="{y:.2f}" width="{size:.2f}" height="{size:.2f}" '
+                f'rx="{radius:.2f}" ry="{radius:.2f}" fill="{fill_ref}" />'
+            )
+            parts.append(
+                f'<rect x="{x:.2f}" y="{y:.2f}" width="{size:.2f}" height="{size:.2f}" '
+                f'rx="{radius:.2f}" ry="{radius:.2f}" fill="none" {stroke_attr_block} />'
+            )
+        else:
+            parts.append(
+                f'<rect x="{x:.2f}" y="{y:.2f}" width="{size:.2f}" height="{size:.2f}" '
+                f'rx="{radius:.2f}" ry="{radius:.2f}" fill="{fill_ref}" {stroke_attr_block} />'
+            )
     elif shape == "Diamond":
         half_w = 28 * scale_x
         half_h = 32 * scale_y
@@ -216,9 +281,15 @@ def svg_hands(
             parts.append(
                 f'<polygon points="{point_str}" fill="none" {outer} />'
             )
-        parts.append(
-            f'<polygon points="{point_str}" fill="{fill_ref}" {stroke_attr_block} />'
-        )
+        if stroke_only:
+            parts.append(f'<polygon points="{point_str}" fill="{fill_ref}" />')
+            parts.append(
+                f'<polygon points="{point_str}" fill="none" {stroke_attr_block} />'
+            )
+        else:
+            parts.append(
+                f'<polygon points="{point_str}" fill="{fill_ref}" {stroke_attr_block} />'
+            )
     elif shape == "Teardrop":
         radius = 30 * min(scale_x, scale_y)
         tip_offset = 26 * scale_y
@@ -228,12 +299,26 @@ def svg_hands(
                 f'A {radius:.2f} {radius:.2f} 0 1 1 {cx + radius:.2f} {cy:.2f} '
                 f'L {cx:.2f} {cy + tip_offset:.2f} Z" fill="none" {outer} />'
             )
-        parts.append(
-            f'<path d="M {cx - radius:.2f} {cy:.2f} '
-            f'A {radius:.2f} {radius:.2f} 0 1 1 {cx + radius:.2f} {cy:.2f} '
-            f'L {cx:.2f} {cy + tip_offset:.2f} Z" '
-            f'fill="{fill_ref}" {stroke_attr_block} />'
-        )
+        if stroke_only:
+            parts.append(
+                f'<path d="M {cx - radius:.2f} {cy:.2f} '
+                f'A {radius:.2f} {radius:.2f} 0 1 1 {cx + radius:.2f} {cy:.2f} '
+                f'L {cx:.2f} {cy + tip_offset:.2f} Z" '
+                f'fill="{fill_ref}" />'
+            )
+            parts.append(
+                f'<path d="M {cx - radius:.2f} {cy:.2f} '
+                f'A {radius:.2f} {radius:.2f} 0 1 1 {cx + radius:.2f} {cy:.2f} '
+                f'L {cx:.2f} {cy + tip_offset:.2f} Z" '
+                f'fill="none" {stroke_attr_block} />'
+            )
+        else:
+            parts.append(
+                f'<path d="M {cx - radius:.2f} {cy:.2f} '
+                f'A {radius:.2f} {radius:.2f} 0 1 1 {cx + radius:.2f} {cy:.2f} '
+                f'L {cx:.2f} {cy + tip_offset:.2f} Z" '
+                f'fill="{fill_ref}" {stroke_attr_block} />'
+            )
     else:  # Circle / ellipse
         rx = 30.4 * scale_x
         ry = 30.4 * scale_y
@@ -242,10 +327,19 @@ def svg_hands(
                 f'<ellipse cx="{cx}" cy="{cy}" rx="{rx:.2f}" ry="{ry:.2f}" fill="none" '
                 f"{outer} />"
             )
-        parts.append(
-            f'<ellipse cx="{cx}" cy="{cy}" rx="{rx:.2f}" ry="{ry:.2f}" fill="{fill_ref}" '
-            f"{stroke_attr_block} />"
-        )
+        if stroke_only:
+            parts.append(
+                f'<ellipse cx="{cx}" cy="{cy}" rx="{rx:.2f}" ry="{ry:.2f}" fill="{fill_ref}" />'
+            )
+            parts.append(
+                f'<ellipse cx="{cx}" cy="{cy}" rx="{rx:.2f}" ry="{ry:.2f}" fill="none" '
+                f"{stroke_attr_block} />"
+            )
+        else:
+            parts.append(
+                f'<ellipse cx="{cx}" cy="{cy}" rx="{rx:.2f}" ry="{ry:.2f}" fill="{fill_ref}" '
+                f"{stroke_attr_block} />"
+            )
     parts.append(svg_footer())
     return "\n".join(parts)
 
@@ -257,11 +351,18 @@ def svg_feet(
     stroke_col: str = "#333333",
     stroke_w: float = 4.513,
     outline_style: str = "Solid",
+    glow_color: Optional[str] = None,
+    glow_width: Optional[float] = None,
 ) -> str:
     width = height = 38
     parts = [svg_header(width, height)]
-    defs, stroke_attrs, outer = outline_style_parts(
-        outline_style, stroke_col, stroke_w, prefix="feet"
+    defs, stroke_attrs, outer, stroke_only = outline_style_parts(
+        outline_style,
+        stroke_col,
+        stroke_w,
+        prefix="feet",
+        glow_color=glow_color,
+        glow_width=glow_width,
     )
     if fill_defs:
         parts.append(fill_defs)
@@ -272,10 +373,18 @@ def svg_feet(
             f'<ellipse cx="19" cy="19" rx="15.7" ry="9.8" fill="none" {outer} />'
         )
     stroke_attr_block = stroke_attrs or outline(stroke_col, stroke_w)
-    parts.append(
-        f'<ellipse cx="19" cy="19" rx="15.7" ry="9.8" fill="{fill_ref}" '
-        f"{stroke_attr_block} />"
-    )
+    if stroke_only:
+        parts.append(
+            f'<ellipse cx="19" cy="19" rx="15.7" ry="9.8" fill="{fill_ref}" />'
+        )
+        parts.append(
+            f'<ellipse cx="19" cy="19" rx="15.7" ry="9.8" fill="none" {stroke_attr_block} />'
+        )
+    else:
+        parts.append(
+            f'<ellipse cx="19" cy="19" rx="15.7" ry="9.8" fill="{fill_ref}" '
+            f"{stroke_attr_block} />"
+        )
     parts.append(svg_footer())
     return "\n".join(parts)
 
@@ -364,6 +473,9 @@ def svg_accessory(
     cfg: PartConfig,
     stroke_col: Optional[str] = None,
     stroke_w: Optional[float] = None,
+    outline_style: str = "Solid",
+    glow_color: Optional[str] = None,
+    glow_width: Optional[float] = None,
 ) -> str:
     """Generate a simple accessory sprite using layered ellipses."""
 

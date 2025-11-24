@@ -220,6 +220,21 @@ bp_stroke_w = st.sidebar.slider(
     value=11.0,
     step=0.1,
 )
+bp_glow_color = None
+bp_glow_width = None
+if bp_outline_style.lower() == "glow":
+    bp_glow_color = st.sidebar.color_picker(
+        "Backpack glow color", bp_stroke_col, key="bp-glow-color"
+    )
+    bp_glow_width = st.sidebar.slider(
+        "Backpack glow thickness",
+        min_value=6.0,
+        max_value=60.0,
+        value=max(bp_stroke_w * 1.5, 8.0),
+        step=0.1,
+        help="Controls how far the glow bleeds past the outline.",
+        key="bp-glow-width",
+    )
 
 st.sidebar.subheader("Hands Outline")
 hand_stroke_col = st.sidebar.color_picker("Hands outline color", "#333333")
@@ -236,6 +251,21 @@ hand_stroke_w = st.sidebar.slider(
     value=11.1,
     step=0.1,
 )
+hand_glow_color = None
+hand_glow_width = None
+if hand_outline_style.lower() == "glow":
+    hand_glow_color = st.sidebar.color_picker(
+        "Hands glow color", hand_stroke_col, key="hands-glow-color"
+    )
+    hand_glow_width = st.sidebar.slider(
+        "Hands glow thickness",
+        min_value=6.0,
+        max_value=60.0,
+        value=max(hand_stroke_w * 1.5, 8.0),
+        step=0.1,
+        help="Controls how far the glow bleeds past the outline.",
+        key="hands-glow-width",
+    )
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Asset Reference")
@@ -647,7 +677,13 @@ if hand_cfg.get("upload_active") and hand_cfg.get("upload_bytes"):
     )
 else:
     hands_svg_text = build_part_svg(
-        hand_cfg, svg_hands, hand_stroke_col, hand_stroke_w, hand_outline_style
+        hand_cfg,
+        svg_hands,
+        hand_stroke_col,
+        hand_stroke_w,
+        hand_outline_style,
+        hand_glow_color,
+        hand_glow_width,
     )
 
 if bp_cfg.get("upload_active") and bp_cfg.get("upload_bytes"):
@@ -660,10 +696,24 @@ if bp_cfg.get("upload_active") and bp_cfg.get("upload_bytes"):
     )
 else:
     backpack_svg_text = build_part_svg(
-        bp_cfg, svg_backpack, bp_stroke_col, bp_stroke_w, bp_outline_style
+        bp_cfg,
+        svg_backpack,
+        bp_stroke_col,
+        bp_stroke_w,
+        bp_outline_style,
+        bp_glow_color,
+        bp_glow_width,
     )
 
-feet_svg_text = build_part_svg(hand_cfg, svg_feet, hand_stroke_col, feet_stroke_w)
+feet_svg_text = build_part_svg(
+    hand_cfg,
+    svg_feet,
+    hand_stroke_col,
+    feet_stroke_w,
+    hand_outline_style,
+    hand_glow_color,
+    hand_glow_width,
+)
 loot_svg_text = svg_loot_shirt_base(loot_icon_tint)
 loot_inner_svg_text = svg_loot_circle_inner(loot_inner_glow)
 loot_outer_svg_text = svg_loot_circle_outer(loot_border_tint)
